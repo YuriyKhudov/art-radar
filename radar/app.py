@@ -208,6 +208,10 @@ a{color:var(--accent)}
 .app{display:grid;grid-template-columns:272px 1fr;min-height:100vh}
 /* --- боковая панель, как список папок в Telegram --- */
 .side{background:var(--side);border-right:1px solid var(--line);padding:22px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+.aboutbtn{display:block;width:calc(100% - 24px);margin:14px 12px 0;min-height:44px;padding:0 14px;font-size:14px;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--ink)}
+.aboutbtn:hover{border-color:var(--accent)}
+.aboutbtn.m{display:none}
+@media (min-width:761px){.side{display:flex;flex-direction:column}.side .aboutbtn{margin-top:auto}}
 .logo{font:600 30px/1 "Cormorant Garamond",Georgia,serif;padding:4px 12px 20px}
 .nav{display:grid;gap:4px}
 .nav a{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;color:var(--ink);text-decoration:none;font-weight:600}
@@ -411,6 +415,8 @@ body.cinema .dot.on::before{background:var(--accent)}
   .topline .status-m{margin:0}
   .looktoggle.m{display:block;margin:0;min-height:30px;font-size:11px;padding:0 10px;white-space:nowrap}
   .side .looktoggle{display:none}
+  .side .aboutbtn{display:none}
+  .aboutbtn.m{display:block;width:100%;margin:24px 0 8px}
   body.cinema .hero{margin-top:0}
 }
 /* нижняя панель на телефоне */
@@ -474,6 +480,42 @@ body.cinema .dot.on::before{background:var(--accent)}
   h1{font-size:34px}
   .actions .btn,.actions button{flex:1}
 }
+/* Приветствие: цвета следуют выбранному оформлению. */
+html.welcome-open,html.welcome-open body{overflow:hidden;overscroll-behavior:none}
+.welcome{width:min(720px,calc(100% - 48px));max-width:none;max-height:calc(100dvh - 48px);padding:0;border:1px solid var(--line);border-radius:28px;background:var(--paper);color:var(--ink);box-shadow:0 28px 100px #0006;overflow:hidden}
+.welcome[open]{display:flex;flex-direction:column;animation:welcome-in .35s ease-out}
+.welcome::backdrop{background:#080a0eb3;backdrop-filter:blur(8px)}
+.welcome-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px 10px;flex-shrink:0}
+.welcome-brand{display:flex;align-items:center;gap:10px;color:var(--accent);font-size:16px;font-weight:800;letter-spacing:.04em}
+.welcome-mark{width:28px;height:28px;border:1px solid var(--accent);border-radius:50%;display:grid;place-items:center}
+.welcome-mark::after{content:"";width:10px;height:10px;background:var(--accent);border-radius:50%}
+.welcome-close{width:44px;min-height:44px;flex-shrink:0;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--paper);color:var(--ink);font:24px/1 Manrope,sans-serif;cursor:pointer}
+.welcome-content{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 28px 24px;font-size:15px;line-height:1.55}
+.welcome .welcome-title{font:800 clamp(26px,4vw,34px)/1.15 Manrope,sans-serif;letter-spacing:-.035em;margin:10px 0 14px;text-wrap:balance}
+.welcome-intro{margin:0 0 22px;color:var(--muted);font-size:16px}
+.welcome-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;list-style:none;padding:0;margin:0}
+.welcome-grid li{display:flex;align-items:flex-start;gap:12px;padding:16px;background:var(--bg);border:1px solid var(--line);border-radius:16px}
+.welcome-icon{font-size:28px;line-height:1.2;flex-shrink:0}
+.welcome-grid h3{font:800 16px/1.4 Manrope,sans-serif;margin:0 0 5px}
+.welcome-grid p{margin:0;color:var(--muted)}
+.welcome-tips{margin-top:18px;padding:16px 18px;border-radius:16px;background:var(--soft)}
+.welcome-tips h3{font:800 16px/1.4 Manrope,sans-serif;margin:0 0 8px}
+.welcome-tips ul{margin:0;padding-left:20px;display:grid;gap:7px}
+.welcome-footer{flex-shrink:0;padding:16px 28px 22px;border-top:1px solid var(--line);background:var(--paper)}
+.welcome-start{display:block;width:100%;min-height:52px;padding:12px 20px;border:0;border-radius:14px;background:var(--accent);color:var(--on-accent);font:800 17px/1.4 Manrope,sans-serif;cursor:pointer}
+.welcome button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.welcome-title:focus{outline:none}
+.welcome-close:hover{background:var(--soft)}
+.welcome-start:hover{filter:brightness(.95)}
+@keyframes welcome-in{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:760px){
+  .welcome{width:100%;max-height:94dvh;margin:auto 0 0;border-radius:24px 24px 0 0;border-bottom:0}
+  .welcome-header{padding:12px 18px 6px}
+  .welcome-content{padding:0 20px 20px}
+  .welcome-grid{grid-template-columns:minmax(0,1fr)}
+  .welcome-footer{padding:14px 20px max(16px,env(safe-area-inset-bottom))}
+}
+@media(prefers-reduced-motion:reduce){.welcome[open]{animation:none}}
 </style>
 </head>
 <body>
@@ -483,9 +525,36 @@ body.cinema .dot.on::before{background:var(--accent)}
     <nav class="nav" id="nav"></nav>
     <div class="status" id="status"></div>
     <button class="looktoggle" data-look-toggle></button>
+    <button class="aboutbtn" data-about>ℹ️ О программе</button>
   </aside>
-  <main><div class="wrap"><div class="topline"><div class="status-m" id="status2"></div><button class="looktoggle m" data-look-toggle></button></div><div class="install" id="install" hidden></div><div id="view"></div></div></main>
+  <main><div class="wrap"><div class="topline"><div class="status-m" id="status2"></div><button class="looktoggle m" data-look-toggle></button></div><div class="install" id="install" hidden></div><div id="view"></div><button class="aboutbtn m" data-about>ℹ️ О программе</button></div></main>
 </div>
+
+<dialog class="welcome" id="welcome" aria-labelledby="welcome-title" aria-describedby="welcome-intro">
+  <div class="welcome-header">
+    <div class="welcome-brand"><span class="welcome-mark" aria-hidden="true"></span>Art Radar</div>
+    <button class="welcome-close" type="button" aria-label="Закрыть приветствие">×</button>
+  </div>
+  <div class="welcome-content">
+    <h2 class="welcome-title" id="welcome-title" tabindex="-1" autofocus>Добро пожаловать в Art Radar</h2>
+    <p class="welcome-intro" id="welcome-intro">Бесплатный помощник для художников, которым интересен американский арт-рынок. Видео, новости, ярмарки и конкурсы из США — в одном месте и с переводом на русский. Без регистрации.</p>
+    <ul class="welcome-grid">
+      <li><span class="welcome-icon" aria-hidden="true">🎬</span><div><h3>Видео и шортсы</h3><p>Выставки, ярмарки и аукционы с 30 ютуб-каналов. Сначала самое популярное, названия переведены.</p></div></li>
+      <li><span class="welcome-icon" aria-hidden="true">📰</span><div><h3>Новости</h3><p>Свежие статьи бесплатных арт-изданий США.</p></div></li>
+      <li><span class="welcome-icon" aria-hidden="true">🗓</span><div><h3>Ярмарки</h3><p>Главные ярмарки и их даты. Одно нажатие — и событие в вашем календаре.</p></div></li>
+      <li><span class="welcome-icon" aria-hidden="true">🎯</span><div><h3>Конкурсы</h3><p>Открытые приёмы заявок для художников со сроками подачи.</p></div></li>
+      <li><span class="welcome-icon" aria-hidden="true">📐</span><div><h3>Форматы</h3><p>Какие размеры картин покупают в США: 17 451 подтверждённая продажа. Сравните со своим размером.</p></div></li>
+      <li><span class="welcome-icon" aria-hidden="true">⭐</span><div><h3>Избранное</h3><p>Нажмите ☆ у видео или статьи, чтобы сохранить и вернуться позже.</p></div></li>
+    </ul>
+    <div class="welcome-tips"><h3>Ещё немного удобства</h3><ul>
+      <li>Как в Телеграме: цифры показывают, сколько нового, а «✓» убирает просмотренное.</li>
+      <li>Всё обновляется само каждый час.</li>
+      <li>Добавьте сайт на экран телефона как приложение.</li>
+      <li>Подборка лучшего — через день в телеграм-группе «Арт кухня», ветка Art Radar.</li>
+    </ul></div>
+  </div>
+  <div class="welcome-footer"><button class="welcome-start" type="button">Начать смотреть</button></div>
+</dialog>
 
 <script>
 const DATA = /*DATA*/{};
@@ -505,6 +574,47 @@ const store = {
   get(k, d){ try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } },
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
 };
+// Приветствие: само показывается один раз, потом — только по кнопке «О программе».
+function showWelcome(force){
+  if (!force && store.get("artradar-welcome-seen", false)) return;
+  const dialog = document.getElementById("welcome");
+  if (dialog.open) return;
+  const previousFocus = document.activeElement;
+  const close = () => dialog.close();
+  if (!dialog.dataset.ready) {
+  dialog.dataset.ready = "1";
+  dialog.querySelector(".welcome-close").onclick = close;
+  dialog.querySelector(".welcome-start").onclick = close;
+  dialog.addEventListener("keydown", e => {
+    if (e.key !== "Tab") return;
+    const first = dialog.querySelector(".welcome-close");
+    const last = dialog.querySelector(".welcome-start");
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === document.getElementById("welcome-title"))) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  });
+  // Не закрываем окно, если жест начался внутри карточки.
+  let backdropDown = false;
+  const outside = e => {
+    const r = dialog.getBoundingClientRect();
+    return e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom);
+  };
+  dialog.addEventListener("pointerdown", e => { backdropDown = outside(e); });
+  dialog.addEventListener("click", e => { if (backdropDown && outside(e)) close(); backdropDown = false; });
+  }
+  dialog.addEventListener("close", () => {
+    document.documentElement.classList.remove("welcome-open");
+    const target = previousFocus && previousFocus !== document.body && previousFocus.isConnected
+      ? previousFocus : document.querySelector("#nav a.on");
+    if (target) target.focus({preventScroll:true});
+  }, {once:true});
+  document.documentElement.classList.add("welcome-open");
+  dialog.querySelector(".welcome-content").scrollTop = 0;
+  dialog.showModal();
+  store.set("artradar-welcome-seen", true);
+}
 const seen = new Set(store.get("artradar-seen", []));
 const saveSeen = () => store.set("artradar-seen", [...seen]);
 let since = store.get("artradar-since", 0);
@@ -1119,6 +1229,8 @@ const VIEWS = {videos: () => feed("videos"), shorts: () => feed("shorts"), news:
 function render(){ renderNav(); if (current !== "videos") stopHero(); VIEWS[current](); }
 applyLook();
 render();
+showWelcome();
+document.querySelectorAll("[data-about]").forEach(b => b.onclick = () => showWelcome(true));
 
 // ---------- счётчик посетителей (без cookies и без личных данных) ----------
 if (DATA.static && DATA.goatcounter) {
