@@ -197,7 +197,7 @@ TEMPLATE = r"""<!doctype html>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Art Radar">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#f7f3ec;--paper:#fffdf8;--ink:#332d29;--muted:#71665d;--accent:#a34e36;--soft:#f0dfd4;--line:#ded5c9;--side:#efe8dd;--on-accent:#fff;--shadow:0 8px 26px #4834271a;--canvas:#efe6d8;--canvas-edge:#cdbfae}
 @media (prefers-color-scheme:dark){:root{--bg:#24211e;--paper:#302b26;--ink:#f5eee3;--muted:#c4b7a9;--accent:#efa78a;--soft:#49352c;--line:#54483e;--side:#2a2622;--on-accent:#24211e;--shadow:0 8px 26px #0004;--canvas:#d8cab6;--canvas-edge:#8a7a66}}
@@ -346,6 +346,73 @@ dialog::backdrop{background:#0008}
 .status-m{display:none}
 .status.busy::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;border-radius:50%;border:2px solid var(--accent);border-right-color:transparent;animation:spin .8s linear infinite;vertical-align:-1px}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== Оформление «Кинотеатр» ===== */
+body.cinema{--bg:#0b0c0f;--paper:#14161a;--ink:#f5f1e9;--muted:#a9a8a5;--accent:#dcff78;--on-accent:#0b0c0f;--soft:#1c1f24;--line:#ffffff1c;--side:#0e0f12;--shadow:0 18px 40px #0008;--canvas:#d8cab6;--canvas-edge:#8a7a66}
+body.cinema{background:var(--bg)}
+body.cinema h1{font:800 44px/1.05 Manrope,sans-serif;letter-spacing:-.04em}
+body.cinema h2{font:700 26px/1.15 Manrope,sans-serif;letter-spacing:-.02em}
+body.cinema .logo{font:800 28px/1 Manrope,sans-serif;letter-spacing:-.04em}
+body.cinema .logo::after{content:".";color:var(--accent)}
+body.cinema .side{background:var(--side);border-right-color:var(--line)}
+body.cinema .nav a{border-radius:12px}
+body.cinema .nav a.on{background:var(--accent);color:var(--on-accent)}
+body.cinema .nav a.on .badge{background:var(--on-accent);color:var(--accent)}
+body.cinema .card{background:var(--paper);border:1px solid transparent;border-radius:14px;box-shadow:none;transition:transform .35s cubic-bezier(.2,.7,.2,1),box-shadow .35s,border-color .35s}
+body.cinema .card.new{border-color:#dcff7833;box-shadow:none}
+body.cinema .card:hover{transform:translateY(-4px) scale(1.015);box-shadow:var(--shadow);border-color:#dcff7855}
+body.cinema .list.videos{grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:22px}
+body.cinema .vcard{grid-template-columns:1fr;gap:12px;padding:10px;align-content:start}
+body.cinema .wrap{max-width:1240px}
+body.cinema .vcard .actions{flex-wrap:nowrap}
+body.cinema .vcard .actions .btn.main{flex:1}
+body.cinema .vcard .mark{font-size:0;min-width:48px;padding:0}
+body.cinema .vcard .mark::before{content:"✓";font-size:18px}
+body.cinema .thumb{border-radius:10px}
+body.cinema .thumb img{transition:transform .6s cubic-bezier(.2,.7,.2,1)}
+body.cinema .card:hover .thumb img{transform:scale(1.06)}
+body.cinema .newtag{background:var(--accent);color:var(--on-accent)}
+body.cinema .chip.on,body.cinema .sortbtn.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+body.cinema .sortbar{background:var(--soft)}
+body.cinema .search{background:var(--paper)}
+body.cinema .pin{background:var(--paper);box-shadow:none}
+.hero{display:none}
+body.cinema .hero{display:block;position:relative;height:min(74vh,700px);min-height:440px;margin:-28px -20px 34px;overflow:hidden;border-radius:0 0 22px 22px;background:#151820}
+body.cinema .slide{position:absolute;inset:0;opacity:0;transition:opacity 1.4s ease;pointer-events:none}
+body.cinema .slide.on{opacity:1;pointer-events:auto}
+body.cinema .slide .back{position:absolute;inset:-4%;width:108%;height:108%;object-fit:cover;filter:blur(2px) brightness(.55);animation:kenburns 26s ease-in-out infinite alternate}
+body.cinema .shade{position:absolute;inset:0;background:linear-gradient(90deg,#080a0ef2 0%,#0a0b0e99 48%,#0a0b0e1f 100%),linear-gradient(0deg,var(--bg) 0%,transparent 45%)}
+body.cinema .htext{position:absolute;left:44px;right:44px;bottom:88px;max-width:820px}
+body.cinema .eyebrow{display:flex;align-items:center;gap:12px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;margin-bottom:20px}
+body.cinema .eyebrow::before{content:"";width:34px;height:1px;background:var(--accent)}
+body.cinema .hero h2{font:800 clamp(32px,4.6vw,66px)/1.04 Manrope,sans-serif;letter-spacing:-.05em;margin:0 0 10px;color:#fff;text-wrap:balance}
+body.cinema .hero .orig{color:#c9c8c4;font-size:14px}
+body.cinema .hmeta{color:#d6d4cf;font-size:15px;margin:16px 0 0}
+body.cinema .hbtns{display:flex;gap:12px;margin-top:24px}
+body.cinema .btn.big{min-height:56px;padding:0 30px;font-size:17px;border-radius:12px}
+body.cinema .hbtns .fav{min-height:56px;min-width:56px;background:#ffffff14;border-color:#ffffff30;color:#fff}
+body.cinema .dots{position:absolute;left:44px;bottom:36px;display:flex;gap:10px}
+body.cinema .dot{width:44px;min-height:24px;padding:0;border:0;background:transparent;position:relative}
+body.cinema .dot::before{content:"";position:absolute;left:0;right:0;top:11px;height:2px;background:#ffffff45;border-radius:2px}
+body.cinema .dot.on::before{background:var(--accent)}
+@keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.12) translate(-1%,1%)}}
+@media (prefers-reduced-motion:reduce){body.cinema .slide .back{animation:none}body.cinema .card,body.cinema .thumb img{transition:none}}
+.looktoggle{display:block;margin:14px 12px 0;min-height:36px;padding:0 12px;font-size:12px;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--muted)}
+.looktoggle.m{display:none}
+.topline{display:contents}
+@media (max-width:760px){
+  body.cinema .hero{height:76svh;min-height:480px;margin:-14px -14px 26px;border-radius:0 0 18px 18px}
+  body.cinema .htext{left:18px;right:18px;bottom:72px}
+  body.cinema .hero h2{font-size:34px}
+  body.cinema .dots{left:18px;bottom:28px}
+  body.cinema h1{font-size:32px}
+  body.cinema .list.videos{grid-template-columns:1fr}
+  .topline{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px}
+  .topline .status-m{margin:0}
+  .looktoggle.m{display:block;margin:0;min-height:30px;font-size:11px;padding:0 10px;white-space:nowrap}
+  .side .looktoggle{display:none}
+  body.cinema .hero{margin-top:0}
+}
 /* нижняя панель на телефоне */
 @media (max-width:760px){
   .side .status{display:none}
@@ -413,8 +480,9 @@ dialog::backdrop{background:#0008}
     <div class="logo">Art Radar</div>
     <nav class="nav" id="nav"></nav>
     <div class="status" id="status"></div>
+    <button class="looktoggle" data-look-toggle></button>
   </aside>
-  <main><div class="wrap"><div class="status-m" id="status2"></div><div class="install" id="install" hidden></div><div id="view"></div></div></main>
+  <main><div class="wrap"><div class="topline"><div class="status-m" id="status2"></div><button class="looktoggle m" data-look-toggle></button></div><div class="install" id="install" hidden></div><div id="view"></div></div></main>
 </div>
 
 <script>
@@ -439,6 +507,15 @@ const seen = new Set(store.get("artradar-seen", []));
 const saveSeen = () => store.set("artradar-seen", [...seen]);
 let since = store.get("artradar-since", 0);
 if (!since) { since = Date.now() - 7 * 864e5; store.set("artradar-since", since); }
+// Оформление: «Кинотеатр» (по умолчанию) или «Классика» — запоминается в браузере.
+const look = () => store.get("artradar-look", "cinema");
+function applyLook(){
+  document.body.classList.toggle("cinema", look() === "cinema");
+  document.querySelectorAll("[data-look-toggle]").forEach(b => {
+    b.textContent = look() === "cinema" ? "🎨 Оформление: Кинотеатр · сменить" : "🎬 Оформление: Классика · сменить";
+    b.onclick = () => { store.set("artradar-look", look() === "cinema" ? "classic" : "cinema"); applyLook(); render(); };
+  });
+}
 const isSeen = x => x.initial || seen.has(x.id) || (Date.parse(x.published) || 0) < since;
 const markSeen = ids => { ids.forEach(i => seen.add(i)); saveSeen(); };
 // Избранное хранится в браузере вместе с копией карточки — чтобы она не пропала, когда уйдёт из ленты.
@@ -532,7 +609,9 @@ function feed(kind){
   const total = items.filter(i => !isSeen(i)).length;
   const sources = new Set(items.map(i => isVideo ? i.channel : i.source)).size;
   const v = document.getElementById("view");
+  const withHero = kind === "videos" && look() === "cinema" && !words.length && !topic;
   v.innerHTML = `
+    ${withHero ? hero(items) : ""}
     <h1>${{videos:"Видео", shorts:"Шортсы", news:"Новости", opps:"Возможности"}[kind]}</h1>
     <p class="sub">${greet()}! ${total ? {videos:"Новых видео: ", shorts:"Новых шортсов: ", news:"Новых статей: ", opps:"Новых объявлений: "}[kind] + total : "Всё новое просмотрено"}.
       ${isVideo ? "Каналов" : kind === "opps" ? "Источников" : "Слежу за изданиями"}: ${sources}.</p>
@@ -552,6 +631,7 @@ function feed(kind){
     <p class="note">${kind === "opps" ? "Open calls, резиденции и гранты из Hyperallergic, Artist Communities Alliance и ArtDeadline. Перед подачей проверяйте условия: у некоторых конкурсов есть взнос за участие (entry fee)."
       : isVideo ? "Видео и картинки — с YouTube. Нажмите «Смотреть», и видео откроется на YouTube."
       : "Статьи открываются на сайтах изданий. Многие издания пишут по-английски."}</p>`;
+  if (withHero) startHero(); else stopHero();
   const sb = v.querySelector(".search");
   sb.oninput = () => {
     clearTimeout(sb.t);
@@ -624,7 +704,7 @@ function videoCard(v, fresh){
       <div class="meta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
       <p class="title">${v.title_ru ? `${esc(v.title_ru)}<span class="orig">${esc(v.title)}</span>` : esc(v.title)}</p>
       <div class="actions"><a class="btn main" href="${esc(v.url)}" target="_blank" rel="noopener">▶ Смотреть</a>
-        ${fresh ? '<button class="mark">✓ Просмотрено</button>' : ""}${favBtn(v.id)}</div>
+        ${fresh ? '<button class="mark" title="Отметить просмотренным" aria-label="Отметить просмотренным">✓ Просмотрено</button>' : ""}${favBtn(v.id)}</div>
     </div>`;
   return hookSeen(el, v, "video");
 }
@@ -652,6 +732,49 @@ function articleCard(a, fresh){
       ${fresh ? '<button class="mark">✓ Прочитано</button>' : ""}${favBtn(a.id)}</div>`;
   return hookSeen(el, a, "article");
 }
+
+// ---------- «Кинотеатр»: большой слайдер с самыми популярными видео недели ----------
+let heroTimer = null;
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function hero(items){
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+  let top = items.filter(v => String(v.published) >= weekAgo);
+  if (top.length < 5) top = items;
+  top = [...top].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 5);
+  if (!top.length) return "";
+  return `<section class="hero" aria-label="Самое популярное">
+    ${top.map((v, i) => `<article class="slide ${i ? "" : "on"}" data-i="${i}">
+      <img class="back" src="https://i.ytimg.com/vi/${esc(v.id)}/maxresdefault.jpg" alt=""
+        onerror="this.onerror=null;this.src='https://i.ytimg.com/vi/${esc(v.id)}/hqdefault.jpg'">
+      <div class="shade"></div>
+      <div class="htext">
+        <div class="eyebrow">В центре внимания · ${String(i + 1).padStart(2, "0")} / ${String(top.length).padStart(2, "0")}</div>
+        <h2>${esc(v.title_ru || v.title)}</h2>
+        ${v.title_ru ? `<div class="orig">${esc(v.title)}</div>` : ""}
+        <div class="hmeta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
+        <div class="hbtns"><a class="btn main big" href="${esc(v.url)}" target="_blank" rel="noopener">▶ Смотреть</a>${favBtn(v.id)}</div>
+      </div></article>`).join("")}
+    <div class="dots">${top.map((v, i) => `<button class="dot ${i ? "" : "on"}" data-go="${i}" aria-label="Слайд ${i + 1}"></button>`).join("")}</div>
+  </section>`;
+}
+function startHero(){
+  stopHero();
+  const box = document.querySelector(".hero");
+  if (!box) return;
+  const slides = [...box.querySelectorAll(".slide")], dots = [...box.querySelectorAll(".dot")];
+  let i = 0;
+  const go = n => { i = (n + slides.length) % slides.length; slides.forEach((s, k) => s.classList.toggle("on", k === i)); dots.forEach((d, k) => d.classList.toggle("on", k === i)); };
+  dots.forEach(d => d.onclick = () => { go(+d.dataset.go); restart(); });
+  const items = DATA.videos;
+  box.querySelectorAll(".slide").forEach(sl => {
+    const f = sl.querySelector(".fav"), a = sl.querySelector("a.btn");
+    const v = items.find(x => a && a.href.includes(x.id));
+    if (f && v) f.onclick = e => { e.stopPropagation(); toggleFav("video", v); f.classList.toggle("on", isFav(v.id)); f.textContent = isFav(v.id) ? "★" : "☆"; };
+  });
+  const restart = () => { stopHero(); if (!reduceMotion() && slides.length > 1) heroTimer = setInterval(() => go(i + 1), 6500); };
+  restart();
+}
+function stopHero(){ if (heroTimer) clearInterval(heroTimer); heroTimer = null; }
 
 // ---------- избранное ----------
 function saved(){
@@ -991,7 +1114,8 @@ function importDialog(){
 
 // ---------- запуск ----------
 const VIEWS = {videos: () => feed("videos"), shorts: () => feed("shorts"), news: () => feed("news"), opps: () => feed("opps"), fairs, formats, saved};
-function render(){ renderNav(); VIEWS[current](); }
+function render(){ renderNav(); if (current !== "videos") stopHero(); VIEWS[current](); }
+applyLook();
 render();
 
 // ---------- счётчик посетителей (без cookies и без личных данных) ----------
