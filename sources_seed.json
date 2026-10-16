@@ -430,5 +430,8 @@
       "url": "https://www.thearmoryshow.com/",
       "note": "в 2026 прошла 24–27 сентября"
     }
-  ]
+  ],
+  "analytics": {
+    "goatcounter": "artradar"
+  }
 }
