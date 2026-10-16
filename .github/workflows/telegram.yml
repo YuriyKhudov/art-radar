@@ -1,9 +1,9 @@
-# Ежедневная подборка Art Radar в ветку Telegram-группы: каждый день в 10:00 по Москве (07:00 UTC).
+# Ежедневная подборка Art Radar в ветку Telegram-группы: каждый день в 12:00 по Москве (09:00 UTC).
 name: Пост в Telegram
 
 on:
   schedule:
-    - cron: "0 7 * * *"
+    - cron: "0 9 * * *"
   workflow_dispatch:
 
 permissions:
