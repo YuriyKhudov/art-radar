@@ -299,12 +299,51 @@ dialog::backdrop{background:#0008}
 .cat span:last-child{font-weight:500;color:var(--muted);font-size:15px}
 .datablock{margin-top:28px}
 .status{font-size:13px;color:var(--muted);padding:18px 12px 0}
+.status-m{display:none}
 .status.busy::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;border-radius:50%;border:2px solid var(--accent);border-right-color:transparent;animation:spin .8s linear infinite;vertical-align:-1px}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* нижняя панель на телефоне */
 @media (max-width:760px){
-  .status{position:fixed;top:10px;right:12px;padding:6px 12px;background:var(--paper);border:1px solid var(--line);border-radius:999px;z-index:6}
-  .status:empty{display:none}
+  .side .status{display:none}
+  .status-m{display:block;font-size:12px;color:var(--muted);margin:0 0 6px}
+  .status-m:empty{display:none}
+  .status-m.busy::before{content:"";display:inline-block;width:9px;height:9px;margin-right:6px;border-radius:50%;border:2px solid var(--accent);border-right-color:transparent;animation:spin .8s linear infinite;vertical-align:-1px}
+  .wrap{padding:14px 14px calc(96px + env(safe-area-inset-bottom))}
+  h1{font-size:32px}
+  h2{font-size:23px;margin:26px 0 10px}
+  .sub{font-size:15px;margin-bottom:14px}
+  /* кнопки тем — одной строкой с прокруткой пальцем */
+  .chips{flex-wrap:nowrap;overflow-x:auto;margin:0 -14px 14px;padding:0 14px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;min-height:38px;padding:0 14px;font-size:14px}
+  /* закреплённые каналы — компактно, в две колонки */
+  .pinned{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .pin{padding:10px 12px;gap:6px;flex-wrap:wrap;align-items:flex-start}
+  .pinic,.pinname span{display:none}
+  .pinname{flex:1 1 100%}
+  .pinname b{font-size:14px}
+  .pin a{font-size:12px;margin-left:auto}
+  .bar{flex-wrap:nowrap;gap:8px}
+  .bar .count{font-size:17px;white-space:nowrap}
+  #allSeen{min-height:38px;font-size:13px;padding:0 12px}
+  .card{padding:12px;border-radius:16px}
+  .vcard{gap:10px}
+  .title{font-size:16px;margin-bottom:10px}
+  .actions .btn,.actions button{min-height:44px;font-size:14px;padding:0 12px}
+  .list.shorts{grid-template-columns:1fr 1fr;gap:10px}
+  /* «Что покупают»: плитки в три колонки, форматы по два в ряд */
+  .cats{grid-template-columns:repeat(3,1fr);gap:8px}
+  .cat{min-height:0;padding:10px;border-radius:14px}
+  .catic{font-size:22px}
+  .cat b{font-size:14px}
+  .cat span:last-child{font-size:11px;line-height:1.35}
+  .sizes{grid-template-columns:1fr 1fr;gap:10px}
+  .card.size{padding:8px}
+  .card.size span{font-size:12px;line-height:1.35}
+  .stage.small{min-height:0;padding:2px}
+  .big{font-size:16px}
+  .stage{min-height:220px;padding:12px}
+  .fair{gap:12px}
   .app{grid-template-columns:1fr}
   .side{position:fixed;bottom:0;top:auto;left:0;right:0;height:auto;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:5;border-right:0;border-top:1px solid var(--line)}
   .logo,.nav .hint{display:none}
@@ -327,7 +366,7 @@ dialog::backdrop{background:#0008}
     <nav class="nav" id="nav"></nav>
     <div class="status" id="status"></div>
   </aside>
-  <main><div class="wrap" id="view"></div></main>
+  <main><div class="wrap"><div class="status-m" id="status2"></div><div id="view"></div></div></main>
 </div>
 
 <script>
@@ -426,7 +465,7 @@ function feed(kind){
       return `<button class="chip ${t === topic ? "on" : ""}" data-topic="${t}">${t ? TOPIC_NAMES[t] || t : "Все"}${n ? ` <small>${n}</small>` : ""}</button>`;
     }).join("")}</div>
     <div class="bar"><span class="count">Новое для вас <span class="pill">${fresh.length}</span></span>
-      ${fresh.length > 1 ? '<button id="allSeen">Отметить всё как просмотренное</button>' : ""}</div>
+      ${fresh.length > 1 ? '<button id="allSeen">✓ Всё просмотрено</button>' : ""}</div>
     <div class="list ${kind}" id="fresh"></div>
     ${old.length ? `<details><summary>Уже просмотренные (${old.length}) ▾</summary><div class="list ${kind}" id="old"></div></details>` : ""}
     <p class="note">${isVideo ? "Видео и картинки — с YouTube. Нажмите «Смотреть», и видео откроется на YouTube."
@@ -475,7 +514,7 @@ function videoCard(v, fresh){
       <div class="meta">${esc(v.channel)} · ${when(v.published)}</div>
       <p class="title">${esc(v.title)}</p>
       <div class="actions"><a class="btn main" href="${esc(v.url)}" target="_blank" rel="noopener">▶ Смотреть</a>
-        ${fresh ? '<button class="mark">Отметить просмотренным</button>' : ""}</div>
+        ${fresh ? '<button class="mark">✓ Просмотрено</button>' : ""}</div>
     </div>`;
   return hookSeen(el, v);
 }
@@ -499,7 +538,7 @@ function articleCard(a, fresh){
     <p class="title"><a href="${esc(a.id)}" target="_blank" rel="noopener">${esc(a.title)}</a></p>
     ${a.summary ? `<p class="text">${esc(a.summary)}</p>` : ""}
     <div class="actions"><a class="btn main" href="${esc(a.id)}" target="_blank" rel="noopener">Читать статью</a>
-      ${fresh ? '<button class="mark">Отметить прочитанным</button>' : ""}</div>`;
+      ${fresh ? '<button class="mark">✓ Прочитано</button>' : ""}</div>`;
   return hookSeen(el, a);
 }
 
@@ -804,20 +843,23 @@ function render(){ renderNav(); VIEWS[current](); }
 render();
 
 // ---------- свежие данные с сервера ----------
+function setStatus(cls, text){
+  for (const [id, base] of [["status", "status"], ["status2", "status-m"]]) {
+    const el = document.getElementById(id); el.className = base + (cls ? " " + cls : ""); el.textContent = text;
+  }
+}
 if (DATA.static) {
   const b = new Date(DATA.built_at);
-  document.getElementById("status").textContent = "Обновлено " + b.toLocaleDateString("ru-RU", {day:"numeric", month:"long"})
-    + " в " + b.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
+  setStatus("", "Обновлено " + b.toLocaleDateString("ru-RU", {day:"numeric", month:"long"})
+    + " в " + b.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"}));
 } else if (location.protocol.startsWith("http")) {
-  const st = document.getElementById("status");
-  st.className = "status busy"; st.textContent = "Обновляю…";
+  setStatus("busy", "Обновляю…");
   fetch("/api/refresh").then(r => r.json()).then(fresh => {
     Object.assign(DATA, fresh);
     // Раздел «Форматы» не перерисовываем, чтобы не сбить ввод размера.
     if (current === "formats") renderNav(); else render();
-    st.className = "status";
-    st.textContent = "Обновлено в " + new Date().toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
-  }).catch(() => { st.className = "status"; st.textContent = "Нет связи — показано сохранённое"; });
+    setStatus("", "Обновлено в " + new Date().toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"}));
+  }).catch(() => setStatus("", "Нет связи — показано сохранённое"));
   setInterval(() => fetch("/api/ping").catch(() => {}), 60000);
 }
 </script>
