@@ -106,6 +106,9 @@ def db():
         published_at TEXT, first_seen_at TEXT, notified_at TEXT)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS channels_initialized (
         channel_id TEXT PRIMARY KEY, initialized_at TEXT)""")
+    # Число просмотров (из той же ленты YouTube) — для сортировки «Популярные». В старых базах столбца ещё нет.
+    if "views" not in {row[1] for row in conn.execute("PRAGMA table_info(seen_videos)")}:
+        conn.execute("ALTER TABLE seen_videos ADD COLUMN views INTEGER")
     return conn
 
 
@@ -119,11 +122,13 @@ def fetch_videos(channel_id):
     for entry in root.findall("atom:entry", NS):
         video_id = entry.findtext("yt:videoId", namespaces=NS)
         link = entry.find("atom:link", NS)
+        stats = entry.find("media:group/media:community/media:statistics", NS)
         videos.append({
             "video_id": video_id,
             "title": entry.findtext("atom:title", namespaces=NS) or "",
             "url": link.get("href") if link is not None else f"https://www.youtube.com/watch?v={video_id}",
             "published_at": entry.findtext("atom:published", namespaces=NS) or "",
+            "views": int(stats.get("views", 0)) if stats is not None else None,
         })
     return videos
 
@@ -204,10 +209,13 @@ def collect(settings):
             # видео за последнюю неделю показываются как новые.
             old = first_time and v["published_at"] < week_ago
             cur = conn.execute(
-                "INSERT OR IGNORE INTO seen_videos VALUES (?,?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO seen_videos (video_id, channel_id, title, url, published_at, first_seen_at, "
+                "notified_at, views) VALUES (?,?,?,?,?,?,?,?)",
                 (v["video_id"], channel["channel_id"], v["title"], v["url"], v["published_at"], now,
-                 "skipped-initial" if old else None))
+                 "skipped-initial" if old else None, v["views"]))
             new += cur.rowcount
+            if not cur.rowcount and v["views"] is not None:  # уже известное видео — обновить просмотры
+                conn.execute("UPDATE seen_videos SET views=? WHERE video_id=?", (v["views"], v["video_id"]))
         if first_time:
             conn.execute("INSERT INTO channels_initialized VALUES (?,?)", (channel["channel_id"], now))
             log(f"«{channel['name']}»: канал подключён, запомнено видео: {new}. Уведомления — о новых роликах.")

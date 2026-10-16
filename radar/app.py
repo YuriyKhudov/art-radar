@@ -27,20 +27,20 @@ URL = f"http://127.0.0.1:{PORT}/"
 IDLE_EXIT_SECONDS = 2 * 60 * 60  # без открытой страницы сервер сам закрывается через 2 часа
 
 
-def recent_videos(settings, limit=400):
+def recent_videos(settings, limit=600):
     info = {c["channel_id"]: c for c in all_channels()}
     watched = [c["channel_id"] for c in channels_to_watch(settings)]
     rows = db().execute(
-        f"SELECT video_id, channel_id, title, url, published_at, notified_at FROM seen_videos "
+        f"SELECT video_id, channel_id, title, url, published_at, notified_at, views FROM seen_videos "
         f"WHERE channel_id IN ({','.join('?' * len(watched))}) ORDER BY published_at DESC LIMIT ?",
         [*watched, limit]).fetchall()
     return [{
         "id": vid, "channel": info.get(ch, {}).get("name", ch), "channel_id": ch,
         "category": info.get(ch, {}).get("category", ""), "title": title, "url": url,
-        "published": published,
+        "published": published, "views": views,
         # Видео, которые уже были на канале при подключении, сразу считаются просмотренными.
         "initial": notified == "skipped-initial",
-    } for vid, ch, title, url, published, notified in rows]
+    } for vid, ch, title, url, published, notified, views in rows]
 
 
 def page_data(settings):
@@ -209,6 +209,9 @@ h3{margin:0 0 6px;font-size:19px}
 button,.btn{font:600 16px Manrope,sans-serif;border-radius:14px;min-height:48px;padding:0 20px;cursor:pointer;border:1px solid var(--line);background:var(--paper);color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .btn.main{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 button:hover,.btn:hover{filter:brightness(.97)}
+.sortbar{display:inline-flex;background:var(--soft);border-radius:999px;padding:4px;gap:4px;margin:0 0 14px}
+.sortbtn{min-height:38px;border:0;border-radius:999px;background:transparent;padding:0 16px;font-size:15px}
+.sortbtn.on{background:var(--paper);box-shadow:var(--shadow)}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
 .chip{min-height:42px;padding:0 16px;border-radius:999px;font-size:15px}
 .chip.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
@@ -403,6 +406,12 @@ function when(iso){
   if (days === 1) return "вчера в " + time;
   return d.toLocaleDateString("ru-RU", {day:"numeric", month:"long"});
 }
+function views(n){
+  if (n == null) return "";
+  const t = n >= 1e6 ? (n / 1e6).toFixed(1).replace(".0", "").replace(".", ",") + " млн"
+    : n >= 1e3 ? Math.round(n / 1e3) + " тыс." : String(n);
+  return " · 👁 " + t;
+}
 function greet(){
   const h = new Date().getHours();
   return h < 6 ? "Доброй ночи" : h < 12 ? "Доброе утро" : h < 18 ? "Добрый день" : "Добрый вечер";
@@ -413,7 +422,7 @@ const daysTo = s => Math.ceil((new Date(s + "T00:00:00") - new Date(new Date().t
 let current = (location.hash.slice(1) || store.get("artradar-section", "videos"));
 if (!SECTIONS.some(s => s.id === current)) current = "videos";
 const filters = {videos:"", shorts:"", news:""};
-const PAGE = 40, limits = {};  // сколько карточек показано в ленте; растёт по кнопке «Показать ещё»
+const PAGE = 40, limits = {}, sortMode = {};  // сколько карточек показано в ленте; растёт по кнопке «Показать ещё»
 // Шортсы — короткие вертикальные ролики; YouTube отдаёт их по ссылке вида /shorts/…
 const isShort = v => v.url.includes("/shorts/");
 const pool = kind => kind === "videos" ? DATA.videos.filter(v => !isShort(v))
@@ -452,7 +461,9 @@ function feed(kind){
   // Каналы галерей (Artseeker) закреплены первой строкой, поэтому отдельной темы для них нет.
   const topics = [...new Set(items.map(i => i.category).filter(c => c && c !== "galleries"))];
   const match = (i, t) => !t || (t.startsWith("ch:") ? i.channel_id === t.slice(3) : i.category === t);
-  const shown = items.filter(i => match(i, topic));
+  const byViews = isVideo && (sortMode[kind] || "popular") === "popular";
+  const shown = items.filter(i => match(i, topic))
+    .sort((a, b) => byViews ? (b.views || 0) - (a.views || 0) : String(b.published).localeCompare(String(a.published)));
   const fresh = shown.filter(i => !isSeen(i)), old = shown.filter(isSeen);
   const total = items.filter(i => !isSeen(i)).length;
   const sources = new Set(items.map(i => isVideo ? i.channel : i.source)).size;
@@ -462,6 +473,8 @@ function feed(kind){
     <p class="sub">${greet()}! ${total ? {videos:"Новых видео: ", shorts:"Новых шортсов: ", news:"Новых статей: "}[kind] + total : "Всё новое просмотрено"}.
       ${isVideo ? "Каналов" : "Слежу за изданиями"}: ${sources}.</p>
     ${isVideo ? pinned(topic, items) : ""}
+    ${isVideo ? `<div class="sortbar">${[["popular", "🔥 Популярные"], ["new", "🕒 Новые"]].map(([k, name]) =>
+      `<button class="sortbtn ${(sortMode[kind] || "popular") === k ? "on" : ""}" data-sort="${k}">${name}</button>`).join("")}</div>` : ""}
     <div class="chips">${["", ...topics].map(t => {
       const n = items.filter(i => !isSeen(i) && match(i, t)).length;
       return `<button class="chip ${t === topic ? "on" : ""}" data-topic="${t}">${t ? TOPIC_NAMES[t] || t : "Все"}${n ? ` <small>${n}</small>` : ""}</button>`;
@@ -472,6 +485,7 @@ function feed(kind){
     ${old.length ? `<details><summary>Уже просмотренные (${old.length}) ▾</summary><div class="list ${kind}" id="old"></div></details>` : ""}
     <p class="note">${isVideo ? "Видео и картинки — с YouTube. Нажмите «Смотреть», и видео откроется на YouTube."
       : "Статьи открываются на сайтах изданий. Многие издания пишут по-английски."}</p>`;
+  v.querySelectorAll("[data-sort]").forEach(b => b.onclick = () => { sortMode[kind] = b.dataset.sort; limits[kind + ":fresh"] = 0; render(); });
   v.querySelectorAll("[data-topic]").forEach(b => b.onclick = e => {
     if (e.target.closest("a")) return;  // ссылка «YouTube ↗» внутри закреплённой строки
     filters[kind] = filters[kind] === b.dataset.topic && b.dataset.topic ? "" : b.dataset.topic; render();
@@ -525,7 +539,7 @@ function videoCard(v, fresh){
       <img src="https://i.ytimg.com/vi/${esc(v.id)}/hqdefault.jpg" alt="" loading="lazy">
       ${fresh ? '<span class="newtag">Новое</span>' : ""}</a>
     <div>
-      <div class="meta">${esc(v.channel)} · ${when(v.published)}</div>
+      <div class="meta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
       <p class="title">${esc(v.title)}</p>
       <div class="actions"><a class="btn main" href="${esc(v.url)}" target="_blank" rel="noopener">▶ Смотреть</a>
         ${fresh ? '<button class="mark">✓ Просмотрено</button>' : ""}</div>
@@ -539,7 +553,7 @@ function shortCard(v, fresh){
     <a class="thumb" href="${esc(v.url)}" target="_blank" rel="noopener">
       <img src="https://i.ytimg.com/vi/${esc(v.id)}/hqdefault.jpg" alt="" loading="lazy">
       ${fresh ? '<span class="newtag">Новое</span>' : ""}</a>
-    <div class="meta">${esc(v.channel)} · ${when(v.published)}</div>
+    <div class="meta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
     <p class="title">${esc(v.title)}</p>
     ${fresh ? '<button class="mark">Просмотрено</button>' : ""}`;
   return hookSeen(el, v);
