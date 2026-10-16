@@ -52,6 +52,7 @@ def collect_data():
     return app.recent_videos(settings), json.loads(notify.SEED_FILE.read_text(encoding="utf-8"))["fairs"], opps
 
 
+POST_DAYS = {0, 2, 4, 6}  # пн, ср, пт, вс
 NUM = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
 CAPTION_LIMIT = 1024  # столько символов Telegram разрешает в подписи к альбому
 # Louisiana Channel и другие снимают не только художников — интервью с писателями и архитекторами в подборку не берём.
@@ -66,7 +67,8 @@ def build_post(videos, fairs, opps=(), now=None, weekly=False):
     """Подпись к посту и картинки-превью видео для альбома. По понедельникам — «Лучшее за неделю»."""
     now = now or dt.datetime.now(dt.timezone.utc)
     top = 6 if weekly else 5
-    since = (now - dt.timedelta(days=7 if weekly else 1)).isoformat()
+    # Посты выходят через день, поэтому обычная подборка берёт видео за двое суток.
+    since = (now - dt.timedelta(days=7 if weekly else 2)).isoformat()
     from radar.translate import load
     ru = load()  # переводы заголовков, накопленные сайтом
     name = lambda v: ru.get(v["title"], v["title"])
@@ -82,14 +84,14 @@ def build_post(videos, fairs, opps=(), now=None, weekly=False):
 
     def compose(title_len):
         lines = [f"🎨 <b>Art Radar · {today.day} {MONTHS[today.month - 1]}</b>",
-                 "🏆 <b>Лучшее за неделю</b>" if weekly else "🔥 <b>Самое смотрибельное за сутки</b>", ""]
+                 "🏆 <b>Лучшее за неделю</b>" if weekly else "🔥 <b>Самое смотрибельное за два дня</b>", ""]
         if picked:
             for i, v in enumerate(picked):
                 t = name(v) if len(name(v)) <= title_len else name(v)[:title_len - 1].rstrip() + "…"
                 lines.append(f"{NUM[i]} <a href=\"{html.escape(v['url'])}\">{html.escape(t)}</a>")
                 lines.append(f"      <i>{html.escape(v['channel'])}{views_text(v['views'])}</i>")
         else:
-            lines.append("За сутки новых видео не вышло — загляните в ленту на сайте.")
+            lines.append("Новых видео за эти дни не вышло — загляните в ленту на сайте.")
         if weekly and soon:
             lines += ["", "🎯 <b>Возможности для художников</b>"]
             for a in soon:
@@ -166,6 +168,7 @@ def main():
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--find-ids", action="store_true")
     p.add_argument("--weekly", action="store_true", help="собрать недельную подборку (по понедельникам — сама)")
+    p.add_argument("--force", action="store_true", help="отправить сегодня, даже если сегодня не день поста")
     p.add_argument("--last-topic-json", action="store_true")
     args = p.parse_args()
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -177,6 +180,10 @@ def main():
         return
     videos, fairs, opps = collect_data()
     moscow = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
+    # Посты через день: понедельник (лучшее за неделю), среда, пятница, воскресенье.
+    if moscow.weekday() not in POST_DAYS and not (args.force or args.dry_run or args.weekly):
+        print("Сегодня не день поста — пропускаю.")
+        return
     weekly = args.weekly or moscow.weekday() == 0  # понедельник
     caption, photos, n = build_post(videos, fairs, opps, weekly=weekly)
     if args.dry_run or not token:

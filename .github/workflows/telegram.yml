@@ -1,4 +1,5 @@
-# Ежедневная подборка Art Radar в ветку Telegram-группы: каждый день в 12:00 по Москве (09:00 UTC).
+# Подборка Art Radar в ветку Telegram-группы через день (пн — лучшее за неделю, ср, пт, вс) в 12:00 по Москве (09:00 UTC).
+# Программа запускается каждый день и сама решает, день ли сегодня для поста; ручной запуск отправляет пост всегда.
 name: Пост в Telegram
 
 on:
@@ -30,4 +31,4 @@ jobs:
           TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ]; then echo "Бот ещё не подключён — пропускаю"; exit 0; fi
-          python -m radar.telegram_post
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then python -m radar.telegram_post --force; else python -m radar.telegram_post; fi
