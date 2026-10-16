@@ -442,6 +442,8 @@ body.cinema .dot.on::before{background:var(--accent)}
   .title{font-size:16px;margin-bottom:10px}
   .actions .btn,.actions button{min-height:44px;font-size:14px;padding:0 12px}
   .list.shorts{grid-template-columns:1fr 1fr;gap:10px}
+  .scard .actions{flex-wrap:nowrap}.scard .actions .fav{flex:none}
+  .scard .mark{font-size:0;min-width:0;padding:0}.scard .mark::before{content:"✓";font-size:18px}
   /* «Что покупают»: плитки в три колонки, форматы по два в ряд */
   .cats{grid-template-columns:repeat(3,1fr);gap:8px}
   .cat{min-height:0;padding:10px;border-radius:14px}
@@ -717,7 +719,7 @@ function shortCard(v, fresh){
       ${fresh ? '<span class="newtag">Новое</span>' : ""}</a>
     <div class="meta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
     <p class="title">${v.title_ru ? `${esc(v.title_ru)}<span class="orig">${esc(v.title)}</span>` : esc(v.title)}</p>
-    <div class="actions">${fresh ? '<button class="mark">Просмотрено</button>' : ""}${favBtn(v.id)}</div>`;
+    <div class="actions">${fresh ? '<button class="mark" title="Отметить просмотренным" aria-label="Отметить просмотренным">Просмотрено</button>' : ""}${favBtn(v.id)}</div>`;
   return hookSeen(el, v, "short");
 }
 function articleCard(a, fresh){
