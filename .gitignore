@@ -11,4 +11,6 @@
 !tests/*.py
 !sources_seed.json
 !README.md
+!docs/
+!docs/*.png
 __pycache__/

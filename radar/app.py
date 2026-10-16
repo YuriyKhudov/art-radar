@@ -554,7 +554,7 @@ function mySize(){
       </div>
       <div class="stage easelbox big" id="cv"></div>
     </div>
-    <p class="note">Это подсказка о размере и пропорциях. Статистика продаж по размерам появится в разделе «Что покупают», когда мы соберём подтверждённые данные.</p>`;
+    <p class="note">Это подсказка о размере и пропорциях. Какие форматы действительно продаются — во вкладке «Что покупают».</p>`;
   const h = document.getElementById("h"), w = document.getElementById("w");
   const show = () => {
     document.querySelectorAll("[data-u]").forEach(b => b.classList.toggle("on", b.dataset.u === sz.unit));
