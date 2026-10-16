@@ -13,4 +13,6 @@
 !README.md
 !docs/
 !docs/*.png
+!site_assets/
+!site_assets/*.png
 __pycache__/

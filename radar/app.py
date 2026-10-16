@@ -103,6 +103,21 @@ def serve(settings):
                 with lock:  # одно обновление за раз, даже если открыто несколько вкладок
                     refresh(settings)
                 self._send(json.dumps(page_data(settings), ensure_ascii=False), "application/json")
+            elif self.path.endswith(".png") and (ROOT / "site_assets" / self.path.lstrip("/")).is_file():
+                data = (ROOT / "site_assets" / self.path.lstrip("/")).read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            elif self.path.startswith("/cal/") and self.path.endswith(".ics"):
+                from radar.build import fair_ics, slug
+                seed = json.loads(SEED_FILE.read_text(encoding="utf-8"))
+                fair = next((f for f in seed.get("fairs", []) if f.get("start") and slug(f["name"]) == self.path[5:-4]), None)
+                if fair:
+                    self._send(fair_ics(fair), "text/calendar")
+                else:
+                    self.send_error(404)
             elif self.path == "/example":
                 self._send(EXAMPLE_FILE.read_text(encoding="utf-8"), "text/html")
             elif self.path == "/api/ping":
@@ -171,8 +186,16 @@ TEMPLATE = r"""<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Art Radar</title>
+<meta name="description" content="Американский арт-рынок для художника: видео, новости, ярмарки и форматы картин">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#a34e36">
+<link rel="icon" type="image/png" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Art Radar">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -209,6 +232,19 @@ h3{margin:0 0 6px;font-size:19px}
 button,.btn{font:600 16px Manrope,sans-serif;border-radius:14px;min-height:48px;padding:0 20px;cursor:pointer;border:1px solid var(--line);background:var(--paper);color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .btn.main{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 button:hover,.btn:hover{filter:brightness(.97)}
+.fav{min-height:44px;min-width:48px;padding:0 12px;font-size:22px;line-height:1;color:var(--muted)}
+.fav.on{color:#e0a100;border-color:#e0a10088}
+.scard .actions{display:flex;gap:6px}.scard .actions .mark{flex:1}
+.searchbox{margin:0 0 14px}
+.search{width:100%;font:16px Manrope,sans-serif;padding:12px 16px;border-radius:14px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+.calbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.calbtns .btn{min-height:40px;font-size:14px;padding:0 14px}
+.simsold{border-color:var(--accent)!important}
+.install{display:flex;align-items:center;gap:10px;background:var(--soft);border-radius:16px;padding:10px 12px;margin:0 0 14px;font-size:14px}
+.install[hidden]{display:none}
+.install span{flex:1}
+.install .btn{min-height:40px;font-size:14px;padding:0 14px}
+.instx{min-height:36px;min-width:36px;padding:0;border:0;background:transparent;font-size:16px}
 .sortbar{display:inline-flex;background:var(--soft);border-radius:999px;padding:4px;gap:4px;margin:0 0 14px}
 .sortbtn{min-height:38px;border:0;border-radius:999px;background:transparent;padding:0 16px;font-size:15px}
 .sortbtn.on{background:var(--paper);box-shadow:var(--shadow)}
@@ -351,8 +387,8 @@ dialog::backdrop{background:#0008}
   .app{grid-template-columns:1fr}
   .side{position:fixed;bottom:0;top:auto;left:0;right:0;height:auto;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:5;border-right:0;border-top:1px solid var(--line)}
   .logo,.nav .hint{display:none}
-  .nav{grid-template-columns:repeat(5,1fr);gap:2px}
-  .nav a{flex-direction:column;gap:2px;padding:6px 2px;font-size:11px;position:relative;text-align:center}
+  .nav{grid-template-columns:repeat(6,1fr);gap:0}
+  .nav a{flex-direction:column;gap:2px;padding:6px 0;font-size:10px;position:relative;text-align:center}
   .nav .ic{font-size:22px}
   .nav .badge{position:absolute;top:2px;right:calc(50% - 26px);min-width:20px;height:20px;font-size:11px;padding:0 5px}
   .vcard,.sizebox{grid-template-columns:1fr}
@@ -370,7 +406,7 @@ dialog::backdrop{background:#0008}
     <nav class="nav" id="nav"></nav>
     <div class="status" id="status"></div>
   </aside>
-  <main><div class="wrap"><div class="status-m" id="status2"></div><div id="view"></div></div></main>
+  <main><div class="wrap"><div class="status-m" id="status2"></div><div class="install" id="install" hidden></div><div id="view"></div></div></main>
 </div>
 
 <script>
@@ -381,6 +417,7 @@ const SECTIONS = [
   {id:"news", icon:"📰", label:"Новости"},
   {id:"fairs", icon:"🗓", label:"Ярмарки"},
   {id:"formats", icon:"📐", label:"Форматы"},
+  {id:"saved", icon:"⭐", label:"Избранное"},
 ];
 const TOPIC_NAMES = {galleries:"Галереи", exhibitions:"Выставки", fairs:"Ярмарки", artists:"Художники", market:"Рынок", news:"Новости"};
 
@@ -395,6 +432,14 @@ let since = store.get("artradar-since", 0);
 if (!since) { since = Date.now() - 7 * 864e5; store.set("artradar-since", since); }
 const isSeen = x => x.initial || seen.has(x.id) || (Date.parse(x.published) || 0) < since;
 const markSeen = ids => { ids.forEach(i => seen.add(i)); saveSeen(); };
+// Избранное хранится в браузере вместе с копией карточки — чтобы она не пропала, когда уйдёт из ленты.
+const favs = store.get("artradar-fav", {});
+const isFav = id => !!favs[id];
+function toggleFav(kind, item){
+  if (favs[item.id]) delete favs[item.id]; else favs[item.id] = {kind, item, at: Date.now()};
+  store.set("artradar-fav", favs); renderNav();
+}
+const favBtn = id => `<button class="fav ${isFav(id) ? "on" : ""}" title="В избранное" aria-label="В избранное">${isFav(id) ? "★" : "☆"}</button>`;
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function when(iso){
@@ -422,7 +467,7 @@ const daysTo = s => Math.ceil((new Date(s + "T00:00:00") - new Date(new Date().t
 let current = (location.hash.slice(1) || store.get("artradar-section", "videos"));
 if (!SECTIONS.some(s => s.id === current)) current = "videos";
 const filters = {videos:"", shorts:"", news:""};
-const PAGE = 40, limits = {}, sortMode = {};  // сколько карточек показано в ленте; растёт по кнопке «Показать ещё»
+const PAGE = 40, limits = {}, sortMode = {}, searchQ = {};  // сколько карточек показано в ленте; растёт по кнопке «Показать ещё»
 // Шортсы — короткие вертикальные ролики; YouTube отдаёт их по ссылке вида /shorts/…
 const isShort = v => v.url.includes("/shorts/");
 const pool = kind => kind === "videos" ? DATA.videos.filter(v => !isShort(v))
@@ -434,6 +479,7 @@ function badge(id){
   return 0;
 }
 function hint(id){
+  if (id === "saved") { const n = Object.keys(favs).length; return n ? `${n} сохр.` : ""; }
   if (id === "fairs"){
     const next = DATA.fairs.filter(f => f.start && daysTo(f.end || f.start) >= 0).sort((a,b) => a.start.localeCompare(b.start))[0];
     return next ? `через ${Math.max(0, daysTo(next.start))} дн.` : "";
@@ -462,7 +508,9 @@ function feed(kind){
   const topics = [...new Set(items.map(i => i.category).filter(c => c && c !== "galleries"))];
   const match = (i, t) => !t || (t.startsWith("ch:") ? i.channel_id === t.slice(3) : i.category === t);
   const byViews = isVideo && (sortMode[kind] || "popular") === "popular";
-  const shown = items.filter(i => match(i, topic))
+  const words = (searchQ[kind] || "").toLowerCase().split(/\s+/).filter(Boolean);
+  const found = i => words.every(w => (i.title + " " + (i.channel || i.source || "") + " " + (i.summary || "")).toLowerCase().includes(w));
+  const shown = items.filter(i => match(i, topic) && found(i))
     .sort((a, b) => byViews ? (b.views || 0) - (a.views || 0) : String(b.published).localeCompare(String(a.published)));
   const fresh = shown.filter(i => !isSeen(i)), old = shown.filter(isSeen);
   const total = items.filter(i => !isSeen(i)).length;
@@ -472,6 +520,8 @@ function feed(kind){
     <h1>${{videos:"Видео", shorts:"Шортсы", news:"Новости"}[kind]}</h1>
     <p class="sub">${greet()}! ${total ? {videos:"Новых видео: ", shorts:"Новых шортсов: ", news:"Новых статей: "}[kind] + total : "Всё новое просмотрено"}.
       ${isVideo ? "Каналов" : "Слежу за изданиями"}: ${sources}.</p>
+    <div class="searchbox"><input class="search" type="search" placeholder="🔍 Поиск: художник, галерея, ярмарка…" value="${esc(searchQ[kind] || "")}"></div>
+    ${words.length ? `<p class="meta">Найдено: ${shown.length}</p>` : ""}
     ${isVideo ? pinned(topic, items) : ""}
     ${isVideo ? `<div class="sortbar">${[["popular", "🔥 Популярные"], ["new", "🕒 Новые"]].map(([k, name]) =>
       `<button class="sortbtn ${(sortMode[kind] || "popular") === k ? "on" : ""}" data-sort="${k}">${name}</button>`).join("")}</div>` : ""}
@@ -482,9 +532,17 @@ function feed(kind){
     <div class="bar"><span class="count">Новое для вас <span class="pill">${fresh.length}</span></span>
       ${fresh.length > 1 ? '<button id="allSeen">✓ Всё просмотрено</button>' : ""}</div>
     <div class="list ${kind}" id="fresh"></div>
-    ${old.length ? `<details><summary>Уже просмотренные (${old.length}) ▾</summary><div class="list ${kind}" id="old"></div></details>` : ""}
+    ${old.length ? `<details ${words.length ? "open" : ""}><summary>Уже просмотренные (${old.length}) ▾</summary><div class="list ${kind}" id="old"></div></details>` : ""}
     <p class="note">${isVideo ? "Видео и картинки — с YouTube. Нажмите «Смотреть», и видео откроется на YouTube."
       : "Статьи открываются на сайтах изданий. Многие издания пишут по-английски."}</p>`;
+  const sb = v.querySelector(".search");
+  sb.oninput = () => {
+    clearTimeout(sb.t);
+    sb.t = setTimeout(() => {
+      searchQ[kind] = sb.value; limits[kind + ":fresh"] = 0; render();
+      const n = document.querySelector(".search"); n.focus(); n.setSelectionRange(n.value.length, n.value.length);
+    }, 250);
+  };
   v.querySelectorAll("[data-sort]").forEach(b => b.onclick = () => { sortMode[kind] = b.dataset.sort; limits[kind + ":fresh"] = 0; render(); });
   v.querySelectorAll("[data-topic]").forEach(b => b.onclick = e => {
     if (e.target.closest("a")) return;  // ссылка «YouTube ↗» внутри закреплённой строки
@@ -505,7 +563,8 @@ function feed(kind){
     }
   };
   if (fresh.length) more(fl, fresh, kind + ":fresh", true);
-  else fl.innerHTML = '<div class="empty"><b>Всё просмотрено ✨</b>Как только появится новое, оно будет здесь.</div>';
+  else fl.innerHTML = words.length ? '<div class="empty"><b>Среди нового ничего не нашлось</b>Посмотрите в «Уже просмотренных» ниже или измените запрос.</div>'
+    : '<div class="empty"><b>Всё просмотрено ✨</b>Как только появится новое, оно будет здесь.</div>';
   const ol = document.getElementById("old");
   if (ol) more(ol, old, kind + ":old", false);
   const all = document.getElementById("allSeen");
@@ -525,7 +584,13 @@ function pinned(topic, items){
     </div>`;
   }).join("")}</div>`;
 }
-function hookSeen(el, item){
+function hookSeen(el, item, kind){
+  const f = el.querySelector(".fav");
+  if (f) f.onclick = e => {
+    e.stopPropagation(); toggleFav(kind, item);
+    f.classList.toggle("on", isFav(item.id)); f.textContent = isFav(item.id) ? "★" : "☆";
+    if (current === "saved") render();
+  };
   const mark = () => { markSeen([item.id]); render(); };
   el.querySelectorAll("a").forEach(a => a.addEventListener("click", () => setTimeout(mark, 300)));
   const b = el.querySelector(".mark"); if (b) b.onclick = mark;
@@ -542,9 +607,9 @@ function videoCard(v, fresh){
       <div class="meta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
       <p class="title">${esc(v.title)}</p>
       <div class="actions"><a class="btn main" href="${esc(v.url)}" target="_blank" rel="noopener">▶ Смотреть</a>
-        ${fresh ? '<button class="mark">✓ Просмотрено</button>' : ""}</div>
+        ${fresh ? '<button class="mark">✓ Просмотрено</button>' : ""}${favBtn(v.id)}</div>
     </div>`;
-  return hookSeen(el, v);
+  return hookSeen(el, v, "video");
 }
 function shortCard(v, fresh){
   const el = document.createElement("article");
@@ -555,8 +620,8 @@ function shortCard(v, fresh){
       ${fresh ? '<span class="newtag">Новое</span>' : ""}</a>
     <div class="meta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
     <p class="title">${esc(v.title)}</p>
-    ${fresh ? '<button class="mark">Просмотрено</button>' : ""}`;
-  return hookSeen(el, v);
+    <div class="actions">${fresh ? '<button class="mark">Просмотрено</button>' : ""}${favBtn(v.id)}</div>`;
+  return hookSeen(el, v, "short");
 }
 function articleCard(a, fresh){
   const el = document.createElement("article");
@@ -566,11 +631,35 @@ function articleCard(a, fresh){
     <p class="title"><a href="${esc(a.id)}" target="_blank" rel="noopener">${esc(a.title)}</a></p>
     ${a.summary ? `<p class="text">${esc(a.summary)}</p>` : ""}
     <div class="actions"><a class="btn main" href="${esc(a.id)}" target="_blank" rel="noopener">Читать статью</a>
-      ${fresh ? '<button class="mark">✓ Прочитано</button>' : ""}</div>`;
-  return hookSeen(el, a);
+      ${fresh ? '<button class="mark">✓ Прочитано</button>' : ""}${favBtn(a.id)}</div>`;
+  return hookSeen(el, a, "article");
+}
+
+// ---------- избранное ----------
+function saved(){
+  const all = Object.values(favs).sort((a, b) => b.at - a.at);
+  const groups = [["video", "Видео", videoCard], ["short", "Шортсы", shortCard], ["article", "Статьи", articleCard]];
+  const v = document.getElementById("view");
+  v.innerHTML = `<h1>Избранное</h1>
+    <p class="sub">${all.length ? "Сохранённое вами. Хранится в этом браузере." : ""}</p>
+    ${all.length ? groups.filter(([k]) => all.some(f => f.kind === k)).map(([k, name]) =>
+      `<h2>${name}</h2><div class="list ${k === "short" ? "shorts" : ""}" data-group="${k}"></div>`).join("")
+      : '<div class="empty"><b>Здесь пока пусто</b>Нажмите ☆ на видео, шортсе или статье — и они сохранятся здесь.</div>'}`;
+  for (const [k, , mk] of groups) {
+    const box = v.querySelector(`[data-group="${k}"]`);
+    if (box) box.replaceChildren(...all.filter(f => f.kind === k).map(f => mk(f.item, false)));
+  }
 }
 
 // ---------- ярмарки ----------
+const slug = name => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function gcal(f){
+  const d = s => s.replaceAll("-", "");
+  const end = new Date((f.end || f.start) + "T00:00:00Z"); end.setUTCDate(end.getUTCDate() + 1);
+  const p = new URLSearchParams({action: "TEMPLATE", text: f.name, dates: d(f.start) + "/" + end.toISOString().slice(0, 10).replaceAll("-", ""),
+    location: `${f.venue}, ${f.city}`, details: `Ярмарка современного искусства. Сайт: ${f.url}\nИз Art Radar`});
+  return "https://calendar.google.com/calendar/render?" + p;
+}
 function fairs(){
   const months = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"];
   const dated = DATA.fairs.filter(f => f.start).sort((a,b) => a.start.localeCompare(b.start));
@@ -582,7 +671,9 @@ function fairs(){
     return `<div class="card fair ${cls}">
       <div class="date"><b>${s.getDate()}–${e.getDate()}</b>${months[e.getMonth()]} ${e.getFullYear()}</div>
       <div><h3>${esc(f.name)}</h3><div class="meta">${esc(f.city)} · ${esc(f.venue)}</div>
-        <a href="${esc(f.url)}" target="_blank" rel="noopener">Сайт ярмарки ↗</a></div>
+        <a href="${esc(f.url)}" target="_blank" rel="noopener">Сайт ярмарки ↗</a>
+        ${cls ? "" : `<div class="calbtns"><a class="btn" href="cal/${slug(f.name)}.ics" download="${slug(f.name)}.ics">🗓 В календарь</a>
+          <a class="btn" href="${gcal(f)}" target="_blank" rel="noopener">Google Календарь</a></div>`}</div>
       <div class="soon">${cls ? "прошла" : live ? "идёт сейчас" : `через ${d} дн.`}</div></div>`;
   };
   document.getElementById("view").innerHTML = `
@@ -663,7 +754,28 @@ function update(){
   ans.innerHTML = `
     <div><b>${f1(hc)} × ${f1(wc)} см = ${f1(hc / 2.54)} × ${f1(wc / 2.54)} дюймов</b>высота × ширина</div>
     <div><b>${orient[0].toUpperCase() + orient.slice(1)}, ${group}</b>${near ? "пропорция " + near[1] : "своя пропорция, примерно " + f1(r) + " : 1"}</div>
-    <div><b>Ближайший американский стандарт</b>${stdText(std[0])}<br><span class="meta">также: ${std.slice(1).map(stdText).join("; ")}</span></div>`;
+    <div><b>Ближайший американский стандарт</b>${stdText(std[0])}<br><span class="meta">также: ${std.slice(1).map(stdText).join("; ")}</span></div>
+    ${similarSold(hc, wc)}`;
+  const go = document.getElementById("toSold");
+  if (go) go.onclick = e => { e.preventDefault(); sold(); scrollTo(0, 0); };
+}
+// Похожие по размеру подтверждённые продажи: та же форма, площадь ±25%, пропорция ±10%.
+function similarSold(hc, wc){
+  const rs = DATA.sales || [];
+  if (!rs.length) return "";
+  const o = Math.abs(Math.max(hc, wc) / Math.min(hc, wc) - 1) < 0.03 ? "square" : hc > wc ? "vertical" : "horizontal";
+  const area = hc * wc, ratio = Math.max(hc, wc) / Math.min(hc, wc);
+  const sim = rs.filter(r => r.o === o && Math.abs(r.h * r.w / area - 1) <= 0.25
+    && Math.abs(Math.max(r.h, r.w) / Math.min(r.h, r.w) / ratio - 1) <= 0.1);
+  const years = rs.map(r => r.y).filter(Boolean);
+  if (!sim.length) return `<div><b>Похожих по размеру проданных работ не нашлось</b>
+    <span class="meta">в подтверждённых аукционных продажах США ${Math.min(...years)}–${Math.max(...years)}</span></div>`;
+  const p = sim.filter(r => r.c === "painting").length, g = sim.filter(r => r.c === "graphics").length;
+  return `<div class="simsold"><b>Похожих по размеру проданных работ: ${sim.length.toLocaleString("ru-RU")}</b>
+    живопись — ${p.toLocaleString("ru-RU")}, графика — ${g.toLocaleString("ru-RU")}${sim.length >= MIN_SHARE ? ` (примерно ${Math.round(p / sim.length * 100)} из 100 — живопись)` : ""}.
+    <br>${priceLine(sim)[0].toUpperCase() + priceLine(sim).slice(1)}.
+    <br><span class="meta">Та же форма, площадь ±25%. Аукционы США ${Math.min(...years)}–${Math.max(...years)}. Это не прогноз — каждая картина уникальна.</span>
+    <br><a href="#" id="toSold">Смотреть статистику проданных форматов →</a></div>`;
 }
 // ---------- рисунок «холст на мольберте» (вариант 4 от Codex, design/canvas_variants.html) ----------
 // Лицевая сторона холста не искажается: высота / ширина = heightIn / widthIn.
@@ -866,9 +978,32 @@ function importDialog(){
 }
 
 // ---------- запуск ----------
-const VIEWS = {videos: () => feed("videos"), shorts: () => feed("shorts"), news: () => feed("news"), fairs, formats};
+const VIEWS = {videos: () => feed("videos"), shorts: () => feed("shorts"), news: () => feed("news"), fairs, formats, saved};
 function render(){ renderNav(); VIEWS[current](); }
 render();
+
+// ---------- установка на телефон ----------
+let installEvt = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; showInstall(); });
+const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+function showInstall(){
+  if (standalone() || store.get("artradar-install-hidden", false) || !DATA.static) return;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (!installEvt && !ios) return;
+  const box = document.getElementById("install");
+  box.innerHTML = `<span>📲 Добавьте Art Radar на главный экран — откроется как приложение</span>
+    <button class="btn main" id="instGo">${installEvt ? "Установить" : "Как?"}</button><button class="instx" id="instX" aria-label="Скрыть">✕</button>`;
+  box.hidden = false;
+  document.getElementById("instX").onclick = () => { box.hidden = true; store.set("artradar-install-hidden", true); };
+  document.getElementById("instGo").onclick = async () => {
+    if (installEvt) { installEvt.prompt(); await installEvt.userChoice; installEvt = null; box.hidden = true; return; }
+    box.innerHTML = `<span>В Safari нажмите <b>Поделиться</b> (квадрат со стрелкой) → <b>На экран «Домой»</b> → <b>Добавить</b>.</span>
+      <button class="instx" id="instX2" aria-label="Скрыть">✕</button>`;
+    document.getElementById("instX2").onclick = () => { box.hidden = true; store.set("artradar-install-hidden", true); };
+  };
+}
+if (DATA.static && "serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+showInstall();
 
 // ---------- свежие данные с сервера ----------
 function setStatus(cls, text){
