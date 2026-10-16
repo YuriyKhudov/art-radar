@@ -773,7 +773,6 @@ function similarSold(hc, wc){
   const p = sim.filter(r => r.c === "painting").length, g = sim.filter(r => r.c === "graphics").length;
   return `<div class="simsold"><b>Похожих по размеру проданных работ: ${sim.length.toLocaleString("ru-RU")}</b>
     живопись — ${p.toLocaleString("ru-RU")}, графика — ${g.toLocaleString("ru-RU")}${sim.length >= MIN_SHARE ? ` (примерно ${Math.round(p / sim.length * 100)} из 100 — живопись)` : ""}.
-    <br>${priceLine(sim)[0].toUpperCase() + priceLine(sim).slice(1)}.
     <br><span class="meta">Та же форма, площадь ±25%. Аукционы США ${Math.min(...years)}–${Math.max(...years)}. Это не прогноз — каждая картина уникальна.</span>
     <br><a href="#" id="toSold">Смотреть статистику проданных форматов →</a></div>`;
 }
@@ -818,11 +817,6 @@ const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1;
 function plural(n, one, few, many){ const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? one : m >= 2 && m <= 4 && (h < 12 || h > 14) ? few : many; }
 function share(n, total){ return total >= MIN_SHARE ? `примерно ${Math.round(n / total * 100)} из 100 проданных` : `${n} ${plural(n, "работа", "работы", "работ")}`; }
 function canvasBox(h, w, max = 120){ const k = max / Math.max(h, w); return `<div class="canvas" style="height:${h * k}px;width:${w * k}px"></div>`; }
-function priceLine(recs){
-  const usd = recs.filter(r => r.p && r.cur === "USD" && r.prem);
-  return usd.length >= MIN_PRICE ? `обычная цена: ${money(median(usd.map(r => r.p)), "USD")}`
-    : `цена: мало примеров (${usd.length} из ${MIN_PRICE})`;
-}
 
 const CATS = {painting:["🖌", "Живопись"], graphics:["✏️", "Графика"], mixed:["🧩", "Смешанная техника"]};
 const PERIODS = [["", "Все годы", () => true], ["2010", "2010–2015", y => y >= 2010], ["2000", "2000–2009", y => y >= 2000 && y < 2010],
@@ -883,7 +877,7 @@ function sold(){
         const [hi, wi] = key.split("x").map(Number);
         return `<div class="card size"><div class="stage small easelbox">${easel(hi, wi)}</div>
           <b class="big">${Math.round(hi * 2.54)} × ${Math.round(wi * 2.54)} см</b><span class="meta">${hi} × ${wi} дюймов</span>
-          <span>${share(rs.length, N)}</span><span class="meta">${nWorks(rs.length)} · ${priceLine(rs)}</span></div>`;
+          <span>${share(rs.length, N)}</span><span class="meta">${nWorks(rs.length)}</span></div>`;
       }).join("")}</div>
       <h2>Форма и величина</h2>
       <div class="sizes">${Object.entries(ORIENT).map(([k, [name, w, h]]) => `<div class="card size">
@@ -893,7 +887,7 @@ function sold(){
         <span>${share(recs.filter(r => r.b === k).length, N)}</span></div>`).join("")}</div>`
       : '<div class="empty">В этой группе пока нет продаж.</div>'}
       <p class="note">Только подтверждённые продажи с аукционов. Это в основном работы известных художников и перепродажа;
-        галерейные продажи могут отличаться. «Обычная цена» — середина цен с комиссией покупателя.</p>
+        галерейные продажи могут отличаться.</p>
       ${dataBlock}`;
     box.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => { soldCat = b.dataset.cat; sold(); });
     box.querySelectorAll("[data-period]").forEach(b => b.onclick = () => { soldPeriod = b.dataset.period; sold(); });
