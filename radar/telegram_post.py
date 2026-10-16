@@ -14,6 +14,7 @@ import datetime as dt
 import html
 import json
 import os
+import re
 import sys
 import tempfile
 import urllib.error
@@ -24,6 +25,8 @@ from pathlib import Path
 import radar.notify as notify
 
 SITE = "https://yuriykhudov.github.io/art-radar/"
+MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября",
+          "ноября", "декабря"]
 
 
 def views_text(n):
@@ -46,29 +49,51 @@ def collect_data():
     return app.recent_videos(settings), json.loads(notify.SEED_FILE.read_text(encoding="utf-8"))["fairs"]
 
 
+NUM = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
+CAPTION_LIMIT = 1024  # столько символов Telegram разрешает в подписи к альбому
+# Louisiana Channel и другие снимают не только художников — интервью с писателями и архитекторами в подборку не берём.
+NOT_ART = re.compile(r"\s*(writer|author|poet|novelist|architect|musician|composer|filmmaker|director|singer)\b", re.I)
+
+
+def visible_len(text):
+    return len(html.unescape(re.sub(r"<[^>]+>", "", text)))
+
+
 def build_post(videos, fairs, now=None, top=5):
+    """Подпись к посту и картинки-превью видео для альбома."""
     now = now or dt.datetime.now(dt.timezone.utc)
     since = (now - dt.timedelta(hours=24)).isoformat()
-    fresh = [v for v in videos if v["published"] >= since and "/shorts/" not in v["url"]]
+    fresh = [v for v in videos if v["published"] >= since and "/shorts/" not in v["url"] and not NOT_ART.match(v["title"])]
     fresh.sort(key=lambda v: -(v["views"] or 0))
-    lines = ["🎨 <b>Art Radar — главное за сутки</b>", ""]
-    if fresh:
-        lines.append("🔥 <b>Популярные новые видео</b>")
-        for i, v in enumerate(fresh[:top], 1):
-            lines.append(f"{i}. <a href=\"{html.escape(v['url'])}\">{html.escape(v['title'])}</a>\n"
-                         f"    <i>{html.escape(v['channel'])}{views_text(v['views'])}</i>")
-    else:
-        lines.append("За сутки новых видео не вышло — загляните в ленту на сайте.")
+    picked = fresh[:top]
     today = now.date()
     upcoming = sorted((f for f in fairs if f.get("start") and dt.date.fromisoformat(f.get("end") or f["start"]) >= today),
                       key=lambda f: f["start"])
-    if upcoming:
-        f = upcoming[0]
-        days = (dt.date.fromisoformat(f["start"]) - today).days
-        when = "идёт сейчас" if days <= 0 else f"через {days} дн."
-        lines += ["", f"🗓 <b>Ближайшая ярмарка:</b> {html.escape(f['name'])}, {html.escape(f['city'])} — {when}"]
-    lines += ["", f"👉 <a href=\"{SITE}\">Все видео, новости и ярмарки — в Art Radar</a>"]
-    return "\n".join(lines), len(fresh)
+
+    def compose(title_len):
+        lines = [f"🎨 <b>Art Radar · {today.day} {MONTHS[today.month - 1]}</b>", "🔥 <b>Самое смотрибельное за сутки</b>", ""]
+        if picked:
+            for i, v in enumerate(picked):
+                t = v["title"] if len(v["title"]) <= title_len else v["title"][:title_len - 1].rstrip() + "…"
+                lines.append(f"{NUM[i]} <a href=\"{html.escape(v['url'])}\">{html.escape(t)}</a>")
+                lines.append(f"      <i>{html.escape(v['channel'])}{views_text(v['views'])}</i>")
+        else:
+            lines.append("За сутки новых видео не вышло — загляните в ленту на сайте.")
+        if upcoming:
+            f = upcoming[0]
+            days = (dt.date.fromisoformat(f["start"]) - today).days
+            when = "идёт прямо сейчас!" if days <= 0 else f"через {days} дн."
+            lines += ["", f"🗓 <b>{html.escape(f['name'])}</b> ({html.escape(f['city'])}) — {when}"]
+        lines += ["", f"👉 <a href=\"{SITE}\">Все видео, новости и ярмарки — в Art Radar</a>"]
+        return "\n".join(lines)
+
+    caption = compose(90)
+    for title_len in (70, 55, 40):  # если не помещается — укорачиваем названия видео
+        if visible_len(caption) <= CAPTION_LIMIT:
+            break
+        caption = compose(title_len)
+    photos = [f"https://i.ytimg.com/vi/{v['id']}/hqdefault.jpg" for v in picked]
+    return caption, photos, len(fresh)
 
 
 def telegram(token, method, **params):
@@ -133,16 +158,24 @@ def main():
         find_ids(token)
         return
     videos, fairs = collect_data()
-    text, n = build_post(videos, fairs)
+    caption, photos, n = build_post(videos, fairs)
     if args.dry_run or not token:
-        print(text)
-        print(f"\n[проба: пост не отправлен; свежих видео за сутки: {n}]")
+        print(caption)
+        print("\nКартинки альбома:", *photos, sep="\n  ")
+        print(f"\n[проба: пост не отправлен; свежих видео за сутки: {n}; символов в подписи: {visible_len(caption)}]")
         return
-    params = {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text, "parse_mode": "HTML",
-              "link_preview_options": json.dumps({"is_disabled": True})}
+    common = {"chat_id": os.environ["TELEGRAM_CHAT_ID"]}
     if os.environ.get("TELEGRAM_THREAD_ID"):
-        params["message_thread_id"] = os.environ["TELEGRAM_THREAD_ID"]
-    telegram(token, "sendMessage", **params)
+        common["message_thread_id"] = os.environ["TELEGRAM_THREAD_ID"]
+    if len(photos) >= 2:
+        media = [{"type": "photo", "media": url} for url in photos]
+        media[0].update(caption=caption, parse_mode="HTML")
+        telegram(token, "sendMediaGroup", media=json.dumps(media, ensure_ascii=False), **common)
+    elif photos:
+        telegram(token, "sendPhoto", photo=photos[0], caption=caption, parse_mode="HTML", **common)
+    else:
+        telegram(token, "sendMessage", text=caption, parse_mode="HTML",
+                 link_preview_options=json.dumps({"is_disabled": True}), **common)
     print("Пост отправлен.")
 
 
