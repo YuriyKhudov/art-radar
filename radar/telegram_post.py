@@ -46,7 +46,10 @@ def collect_data():
     from radar import app
     settings = {**notify.DEFAULT_SETTINGS, "notify_channels": "all"}
     notify.collect(settings)
-    return app.recent_videos(settings), json.loads(notify.SEED_FILE.read_text(encoding="utf-8"))["fairs"]
+    from radar.news import collect_news, recent_articles
+    collect_news()
+    opps = [a for a in recent_articles() if a["category"] == "opportunities"]
+    return app.recent_videos(settings), json.loads(notify.SEED_FILE.read_text(encoding="utf-8"))["fairs"], opps
 
 
 NUM = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
@@ -59,10 +62,14 @@ def visible_len(text):
     return len(html.unescape(re.sub(r"<[^>]+>", "", text)))
 
 
-def build_post(videos, fairs, now=None, top=5):
-    """Подпись к посту и картинки-превью видео для альбома."""
+def build_post(videos, fairs, opps=(), now=None, weekly=False):
+    """Подпись к посту и картинки-превью видео для альбома. По понедельникам — «Лучшее за неделю»."""
     now = now or dt.datetime.now(dt.timezone.utc)
-    since = (now - dt.timedelta(hours=24)).isoformat()
+    top = 6 if weekly else 5
+    since = (now - dt.timedelta(days=7 if weekly else 1)).isoformat()
+    from radar.translate import load
+    ru = load()  # переводы заголовков, накопленные сайтом
+    name = lambda v: ru.get(v["title"], v["title"])
     fresh = [v for v in videos if v["published"] >= since and "/shorts/" not in v["url"] and not NOT_ART.match(v["title"])]
     fresh.sort(key=lambda v: -(v["views"] or 0))
     picked = fresh[:top]
@@ -70,15 +77,25 @@ def build_post(videos, fairs, now=None, top=5):
     upcoming = sorted((f for f in fairs if f.get("start") and dt.date.fromisoformat(f.get("end") or f["start"]) >= today),
                       key=lambda f: f["start"])
 
+    soon = sorted((a for a in opps if a.get("deadline") and a["deadline"] >= today.isoformat()),
+                  key=lambda a: a["deadline"])[:3]
+
     def compose(title_len):
-        lines = [f"🎨 <b>Art Radar · {today.day} {MONTHS[today.month - 1]}</b>", "🔥 <b>Самое смотрибельное за сутки</b>", ""]
+        lines = [f"🎨 <b>Art Radar · {today.day} {MONTHS[today.month - 1]}</b>",
+                 "🏆 <b>Лучшее за неделю</b>" if weekly else "🔥 <b>Самое смотрибельное за сутки</b>", ""]
         if picked:
             for i, v in enumerate(picked):
-                t = v["title"] if len(v["title"]) <= title_len else v["title"][:title_len - 1].rstrip() + "…"
+                t = name(v) if len(name(v)) <= title_len else name(v)[:title_len - 1].rstrip() + "…"
                 lines.append(f"{NUM[i]} <a href=\"{html.escape(v['url'])}\">{html.escape(t)}</a>")
                 lines.append(f"      <i>{html.escape(v['channel'])}{views_text(v['views'])}</i>")
         else:
             lines.append("За сутки новых видео не вышло — загляните в ленту на сайте.")
+        if weekly and soon:
+            lines += ["", "🎯 <b>Возможности для художников</b>"]
+            for a in soon:
+                t = name(a) if len(name(a)) <= title_len else name(a)[:title_len - 1].rstrip() + "…"
+                d = dt.date.fromisoformat(a["deadline"])
+                lines.append(f"• <a href=\"{html.escape(a['id'])}\">{html.escape(t)}</a> — до {d.day} {MONTHS[d.month - 1]}")
         if upcoming:
             f = upcoming[0]
             days = (dt.date.fromisoformat(f["start"]) - today).days
@@ -88,7 +105,7 @@ def build_post(videos, fairs, now=None, top=5):
         return "\n".join(lines)
 
     caption = compose(90)
-    for title_len in (70, 55, 40):  # если не помещается — укорачиваем названия видео
+    for title_len in (70, 55, 40, 30):  # если не помещается — укорачиваем названия видео
         if visible_len(caption) <= CAPTION_LIMIT:
             break
         caption = compose(title_len)
@@ -148,6 +165,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--find-ids", action="store_true")
+    p.add_argument("--weekly", action="store_true", help="собрать недельную подборку (по понедельникам — сама)")
     p.add_argument("--last-topic-json", action="store_true")
     args = p.parse_args()
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -157,8 +175,10 @@ def main():
     if args.find_ids:
         find_ids(token)
         return
-    videos, fairs = collect_data()
-    caption, photos, n = build_post(videos, fairs)
+    videos, fairs, opps = collect_data()
+    moscow = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
+    weekly = args.weekly or moscow.weekday() == 0  # понедельник
+    caption, photos, n = build_post(videos, fairs, opps, weekly=weekly)
     if args.dry_run or not token:
         print(caption)
         print("\nКартинки альбома:", *photos, sep="\n  ")

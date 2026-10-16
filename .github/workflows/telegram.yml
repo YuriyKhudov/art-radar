@@ -17,6 +17,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # Русские заголовки берём из переводов, которые накапливает сборка сайта.
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache
+          key: translations-${{ github.run_id }}
+          restore-keys: translations-
       - name: Отправить подборку
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

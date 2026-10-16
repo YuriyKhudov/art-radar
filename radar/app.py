@@ -232,6 +232,10 @@ h3{margin:0 0 6px;font-size:19px}
 button,.btn{font:600 16px Manrope,sans-serif;border-radius:14px;min-height:48px;padding:0 20px;cursor:pointer;border:1px solid var(--line);background:var(--paper);color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .btn.main{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 button:hover,.btn:hover{filter:brightness(.97)}
+.orig{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:4px}
+.deadline{display:inline-block;background:var(--soft);color:var(--ink);font-weight:700;font-size:14px;border-radius:999px;padding:4px 12px;margin:0 0 12px}
+.lbls{display:none}
+.chips[hidden]{display:none}
 .fav{min-height:44px;min-width:48px;padding:0 12px;font-size:22px;line-height:1;color:var(--muted)}
 .fav.on{color:#e0a100;border-color:#e0a10088}
 .scard .actions{display:flex;gap:6px}.scard .actions .mark{flex:1}
@@ -387,8 +391,12 @@ dialog::backdrop{background:#0008}
   .app{grid-template-columns:1fr}
   .side{position:fixed;bottom:0;top:auto;left:0;right:0;height:auto;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:5;border-right:0;border-top:1px solid var(--line)}
   .logo,.nav .hint{display:none}
-  .nav{grid-template-columns:repeat(6,1fr);gap:0}
-  .nav a{flex-direction:column;gap:2px;padding:6px 0;font-size:10px;position:relative;text-align:center}
+  .nav{grid-template-columns:repeat(7,1fr);gap:0}
+  .nav .lbl{display:block}.nav a:has(.lbls) .lbl{display:none}.nav .lbls{display:block}
+  .nav a{flex-direction:column;gap:2px;padding:6px 0;font-size:9.5px;position:relative;text-align:center}
+  .sortbtn{padding:0 11px;font-size:14px}
+  .actions .fav{flex:0 0 52px}
+  .actions .btn,.actions button{white-space:nowrap}
   .nav .ic{font-size:22px}
   .nav .badge{position:absolute;top:2px;right:calc(50% - 26px);min-width:20px;height:20px;font-size:11px;padding:0 5px}
   .vcard,.sizebox{grid-template-columns:1fr}
@@ -416,6 +424,7 @@ const SECTIONS = [
   {id:"shorts", icon:"📱", label:"Шортсы"},
   {id:"news", icon:"📰", label:"Новости"},
   {id:"fairs", icon:"🗓", label:"Ярмарки"},
+  {id:"opps", icon:"🎯", label:"Возможности", short:"Конкурсы"},
   {id:"formats", icon:"📐", label:"Форматы"},
   {id:"saved", icon:"⭐", label:"Избранное"},
 ];
@@ -470,12 +479,16 @@ const filters = {videos:"", shorts:"", news:""};
 const PAGE = 40, limits = {}, sortMode = {}, searchQ = {};  // сколько карточек показано в ленте; растёт по кнопке «Показать ещё»
 // Шортсы — короткие вертикальные ролики; YouTube отдаёт их по ссылке вида /shorts/…
 const isShort = v => v.url.includes("/shorts/");
+const isOpp = a => a.category === "opportunities";
+const todayISO = () => new Date().toISOString().slice(0, 10);
 const pool = kind => kind === "videos" ? DATA.videos.filter(v => !isShort(v))
-  : kind === "shorts" ? DATA.videos.filter(isShort) : DATA.articles;
+  : kind === "shorts" ? DATA.videos.filter(isShort)
+  : kind === "opps" ? DATA.articles.filter(a => isOpp(a) && (!a.deadline || a.deadline >= todayISO()))
+  : DATA.articles.filter(a => !isOpp(a));
 
 function badge(id){
   if (id === "videos" || id === "shorts") return pool(id).filter(v => !isSeen(v)).length;
-  if (id === "news") return DATA.articles.filter(a => !isSeen(a)).length;
+  if (id === "news" || id === "opps") return pool(id).filter(a => !isSeen(a)).length;
   return 0;
 }
 function hint(id){
@@ -490,7 +503,7 @@ function renderNav(){
   document.getElementById("nav").innerHTML = SECTIONS.map(s => {
     const n = badge(s.id), h = hint(s.id);
     return `<a href="#${s.id}" class="${s.id === current ? "on" : ""}">
-      <span class="ic">${s.icon}</span><span class="lbl">${s.label}</span>
+      <span class="ic">${s.icon}</span><span class="lbl">${s.label}</span>${s.short ? `<span class="lbls">${s.short}</span>` : ""}
       ${n ? `<span class="badge">${n}</span>` : h ? `<span class="hint">${h}</span>` : ""}</a>`;
   }).join("");
 }
@@ -502,30 +515,33 @@ window.addEventListener("hashchange", () => {
 
 // ---------- общая лента (видео и новости) ----------
 function feed(kind){
-  const items = pool(kind), isVideo = kind !== "news";
+  const items = pool(kind), isVideo = kind === "videos" || kind === "shorts";
   const topic = filters[kind];
   // Каналы галерей (Artseeker) закреплены первой строкой, поэтому отдельной темы для них нет.
-  const topics = [...new Set(items.map(i => i.category).filter(c => c && c !== "galleries"))];
+  const topics = [...new Set(items.map(i => i.category).filter(c => c && c !== "galleries" && c !== "opportunities"))];
   const match = (i, t) => !t || (t.startsWith("ch:") ? i.channel_id === t.slice(3) : i.category === t);
-  const byViews = isVideo && (sortMode[kind] || "popular") === "popular";
+  const mode = isVideo ? (sortMode[kind] || "popular") : "new";
+  const byViews = mode === "popular" || mode === "week";
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
   const words = (searchQ[kind] || "").toLowerCase().split(/\s+/).filter(Boolean);
-  const found = i => words.every(w => (i.title + " " + (i.channel || i.source || "") + " " + (i.summary || "")).toLowerCase().includes(w));
-  const shown = items.filter(i => match(i, topic) && found(i))
-    .sort((a, b) => byViews ? (b.views || 0) - (a.views || 0) : String(b.published).localeCompare(String(a.published)));
-  const fresh = shown.filter(i => !isSeen(i)), old = shown.filter(isSeen);
+  const found = i => words.every(w => (i.title + " " + (i.title_ru || "") + " " + (i.channel || i.source || "") + " " + (i.summary || "")).toLowerCase().includes(w));
+  const shown = items.filter(i => match(i, topic) && found(i) && (mode !== "week" || String(i.published) >= weekAgo))
+    .sort(kind === "opps" ? (a, b) => (a.deadline || "9999").localeCompare(b.deadline || "9999")
+      : (a, b) => byViews ? (b.views || 0) - (a.views || 0) : String(b.published).localeCompare(String(a.published)));
+  const fresh = mode === "week" ? shown : shown.filter(i => !isSeen(i)), old = mode === "week" ? [] : shown.filter(isSeen);
   const total = items.filter(i => !isSeen(i)).length;
   const sources = new Set(items.map(i => isVideo ? i.channel : i.source)).size;
   const v = document.getElementById("view");
   v.innerHTML = `
-    <h1>${{videos:"Видео", shorts:"Шортсы", news:"Новости"}[kind]}</h1>
-    <p class="sub">${greet()}! ${total ? {videos:"Новых видео: ", shorts:"Новых шортсов: ", news:"Новых статей: "}[kind] + total : "Всё новое просмотрено"}.
-      ${isVideo ? "Каналов" : "Слежу за изданиями"}: ${sources}.</p>
+    <h1>${{videos:"Видео", shorts:"Шортсы", news:"Новости", opps:"Возможности"}[kind]}</h1>
+    <p class="sub">${greet()}! ${total ? {videos:"Новых видео: ", shorts:"Новых шортсов: ", news:"Новых статей: ", opps:"Новых объявлений: "}[kind] + total : "Всё новое просмотрено"}.
+      ${isVideo ? "Каналов" : kind === "opps" ? "Источников" : "Слежу за изданиями"}: ${sources}.</p>
     <div class="searchbox"><input class="search" type="search" placeholder="🔍 Поиск: художник, галерея, ярмарка…" value="${esc(searchQ[kind] || "")}"></div>
     ${words.length ? `<p class="meta">Найдено: ${shown.length}</p>` : ""}
     ${isVideo ? pinned(topic, items) : ""}
-    ${isVideo ? `<div class="sortbar">${[["popular", "🔥 Популярные"], ["new", "🕒 Новые"]].map(([k, name]) =>
+    ${isVideo ? `<div class="sortbar">${[["popular", "🔥 Популярные"], ["new", "🕒 Новые"], ["week", "🏆 Неделя"]].map(([k, name]) =>
       `<button class="sortbtn ${(sortMode[kind] || "popular") === k ? "on" : ""}" data-sort="${k}">${name}</button>`).join("")}</div>` : ""}
-    <div class="chips">${["", ...topics].map(t => {
+    <div class="chips" ${topics.length ? "" : "hidden"}>${["", ...topics].map(t => {
       const n = items.filter(i => !isSeen(i) && match(i, t)).length;
       return `<button class="chip ${t === topic ? "on" : ""}" data-topic="${t}">${t ? TOPIC_NAMES[t] || t : "Все"}${n ? ` <small>${n}</small>` : ""}</button>`;
     }).join("")}</div>
@@ -533,7 +549,8 @@ function feed(kind){
       ${fresh.length > 1 ? '<button id="allSeen">✓ Всё просмотрено</button>' : ""}</div>
     <div class="list ${kind}" id="fresh"></div>
     ${old.length ? `<details ${words.length ? "open" : ""}><summary>Уже просмотренные (${old.length}) ▾</summary><div class="list ${kind}" id="old"></div></details>` : ""}
-    <p class="note">${isVideo ? "Видео и картинки — с YouTube. Нажмите «Смотреть», и видео откроется на YouTube."
+    <p class="note">${kind === "opps" ? "Open calls, резиденции и гранты из Hyperallergic, Artist Communities Alliance и ArtDeadline. Перед подачей проверяйте условия: у некоторых конкурсов есть взнос за участие (entry fee)."
+      : isVideo ? "Видео и картинки — с YouTube. Нажмите «Смотреть», и видео откроется на YouTube."
       : "Статьи открываются на сайтах изданий. Многие издания пишут по-английски."}</p>`;
   const sb = v.querySelector(".search");
   sb.oninput = () => {
@@ -605,7 +622,7 @@ function videoCard(v, fresh){
       ${fresh ? '<span class="newtag">Новое</span>' : ""}</a>
     <div>
       <div class="meta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
-      <p class="title">${esc(v.title)}</p>
+      <p class="title">${v.title_ru ? `${esc(v.title_ru)}<span class="orig">${esc(v.title)}</span>` : esc(v.title)}</p>
       <div class="actions"><a class="btn main" href="${esc(v.url)}" target="_blank" rel="noopener">▶ Смотреть</a>
         ${fresh ? '<button class="mark">✓ Просмотрено</button>' : ""}${favBtn(v.id)}</div>
     </div>`;
@@ -619,7 +636,7 @@ function shortCard(v, fresh){
       <img src="https://i.ytimg.com/vi/${esc(v.id)}/hqdefault.jpg" alt="" loading="lazy">
       ${fresh ? '<span class="newtag">Новое</span>' : ""}</a>
     <div class="meta">${esc(v.channel)} · ${when(v.published)}${views(v.views)}</div>
-    <p class="title">${esc(v.title)}</p>
+    <p class="title">${v.title_ru ? `${esc(v.title_ru)}<span class="orig">${esc(v.title)}</span>` : esc(v.title)}</p>
     <div class="actions">${fresh ? '<button class="mark">Просмотрено</button>' : ""}${favBtn(v.id)}</div>`;
   return hookSeen(el, v, "short");
 }
@@ -628,9 +645,10 @@ function articleCard(a, fresh){
   el.className = "card" + (fresh ? " new" : "");
   el.innerHTML = `
     <div class="meta">${fresh ? '<span class="newtag">Новое</span>' : ""}${esc(a.source)} · ${when(a.published)}</div>
-    <p class="title"><a href="${esc(a.id)}" target="_blank" rel="noopener">${esc(a.title)}</a></p>
+    <p class="title"><a href="${esc(a.id)}" target="_blank" rel="noopener">${esc(a.title_ru || a.title)}</a>${a.title_ru ? `<span class="orig">${esc(a.title)}</span>` : ""}</p>
+    ${a.deadline ? `<p class="deadline">⏳ Подать до ${new Date(a.deadline + "T00:00:00").toLocaleDateString("ru-RU", {day: "numeric", month: "long"})}${(d => d <= 14 ? ` — осталось ${d} дн.` : "")(daysTo(a.deadline))}</p>` : ""}
     ${a.summary ? `<p class="text">${esc(a.summary)}</p>` : ""}
-    <div class="actions"><a class="btn main" href="${esc(a.id)}" target="_blank" rel="noopener">Читать статью</a>
+    <div class="actions"><a class="btn main" href="${esc(a.id)}" target="_blank" rel="noopener">${isOpp(a) ? "Подробнее" : "Читать"}</a>
       ${fresh ? '<button class="mark">✓ Прочитано</button>' : ""}${favBtn(a.id)}</div>`;
   return hookSeen(el, a, "article");
 }
@@ -972,9 +990,17 @@ function importDialog(){
 }
 
 // ---------- запуск ----------
-const VIEWS = {videos: () => feed("videos"), shorts: () => feed("shorts"), news: () => feed("news"), fairs, formats, saved};
+const VIEWS = {videos: () => feed("videos"), shorts: () => feed("shorts"), news: () => feed("news"), opps: () => feed("opps"), fairs, formats, saved};
 function render(){ renderNav(); VIEWS[current](); }
 render();
+
+// ---------- счётчик посетителей (без cookies и без личных данных) ----------
+if (DATA.static && DATA.goatcounter) {
+  const sc = document.createElement("script");
+  sc.async = true; sc.src = "https://gc.zgo.at/count.js";
+  sc.dataset.goatcounter = `https://${DATA.goatcounter}.goatcounter.com/count`;
+  document.head.append(sc);
+}
 
 // ---------- установка на телефон ----------
 let installEvt = null;

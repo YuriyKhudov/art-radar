@@ -85,6 +85,8 @@ def collect_news():
         if items is None:
             continue
         first_time = conn.execute("SELECT 1 FROM feeds_initialized WHERE url=?", (feed["url"],)).fetchone() is None
+        if feed.get("link_contains"):  # из общей ленты сайта берём только нужный раздел (например, open calls)
+            items = [i for i in items if feed["link_contains"] in i["link"]]
         for i in items:
             # При первом подключении ленты новыми считаются только статьи за последние 3 дня.
             initial = int(first_time and (not i["published"] or i["published"] < three_days_ago))
@@ -102,5 +104,23 @@ def recent_articles(limit=400):
     rows = db().execute("SELECT link, source, category, title, summary, published_at, initial FROM articles "
                         f"WHERE source IN ({','.join('?' * len(names))}) ORDER BY published_at DESC LIMIT ?",
                         (*names, limit)).fetchall()
-    return [{"id": link, "source": s, "category": c, "title": t, "summary": sm, "published": p, "initial": bool(ini)}
+    return [{"id": link, "source": s, "category": c, "title": t, "summary": sm, "published": p, "initial": bool(ini),
+             "deadline": deadline(sm) if c == "opportunities" else ""}
             for link, s, c, t, sm, p, ini in rows]
+
+
+DEADLINE = re.compile(r"deadline[^A-Za-z0-9]{0,3}(?:is\s+)?([A-Z][a-z]+\.?\s+\d{1,2},?\s+\d{4})", re.I)
+
+
+def deadline(text):
+    """Срок подачи из описания объявления: «Deadline: November 22, 2026» → 2026-11-22."""
+    m = DEADLINE.search(text or "")
+    if not m:
+        return ""
+    raw = m.group(1).replace(".", "").replace(",", "")
+    for fmt in ("%B %d %Y", "%b %d %Y"):
+        try:
+            return dt.datetime.strptime(raw, fmt).date().isoformat()
+        except ValueError:
+            pass
+    return ""

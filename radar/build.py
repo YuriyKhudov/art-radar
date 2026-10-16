@@ -109,10 +109,15 @@ def build(out):
     data = app.page_data(settings)
     for item in data["videos"] + data["articles"]:
         item["initial"] = False  # «новое» для каждого посетителя решает его браузер
+    # Перевод заголовков: сначала самые популярные видео, потом свежие статьи и возможности.
+    from radar.translate import translate_titles
+    translate_titles(sorted(data["videos"], key=lambda v: -(v.get("views") or 0)) + data["articles"])
     stats = json.loads(SALES_STATS.read_text(encoding="utf-8")) if SALES_STATS.exists() else {"sales": [], "datasets": []}
     data.update(stats)
     data["sales_own"] = []
     data["static"] = True
+    # Код счётчика посетителей GoatCounter (из sources_seed.json → "analytics"); пусто — счётчик выключен.
+    data["goatcounter"] = json.loads(notify.SEED_FILE.read_text(encoding="utf-8")).get("analytics", {}).get("goatcounter", "")
     data["built_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="minutes")
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)

@@ -25,6 +25,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # Переводы заголовков переносятся из сборки в сборку, чтобы не переводить одно и то же заново.
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: translations-${{ github.run_id }}
+          restore-keys: translations-
       - name: Собрать сайт
         run: python -m radar.build --out _site
       - uses: actions/upload-pages-artifact@v3
