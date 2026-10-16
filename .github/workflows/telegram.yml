@@ -1,0 +1,27 @@
+# Ежедневная подборка Art Radar в ветку Telegram-группы: каждый день в 10:00 по Москве (07:00 UTC).
+name: Пост в Telegram
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Отправить подборку
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then echo "Бот ещё не подключён — пропускаю"; exit 0; fi
+          python -m radar.telegram_post
