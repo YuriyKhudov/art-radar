@@ -49,18 +49,13 @@
     {"name": "Whitney Museum", "channel_id": "UCkIysc598DcproKIPlHBfCg", "handle": "@whitney_museum", "category": "exhibitions", "region": "NYC", "priority": 3}
   ],
   "rss": [
-    {"name": "ARTnews", "url": "https://www.artnews.com/feed/", "category": "news"},
-    {"name": "ARTnews Market", "url": "https://www.artnews.com/c/art-news/market/feed/", "category": "market"},
     {"name": "Artnet News", "url": "https://news.artnet.com/feed", "category": "news"},
-    {"name": "Artnet News Market", "url": "https://news.artnet.com/market/feed", "category": "market"},
     {"name": "The Art Newspaper", "url": "https://www.theartnewspaper.com/rss.xml", "category": "news"},
     {"name": "Hyperallergic", "url": "https://hyperallergic.com/feed/", "category": "exhibitions"},
-    {"name": "Artforum", "url": "https://www.artforum.com/feed/", "category": "news"},
     {"name": "Artsy Editorial", "url": "https://www.artsy.net/rss/news", "category": "news"},
     {"name": "Two Coats of Paint", "url": "https://www.twocoatsofpaint.com/feed", "category": "exhibitions"},
     {"name": "Galerie Magazine", "url": "https://galeriemagazine.com/feed/", "category": "fairs"},
     {"name": "Art & Object", "url": "https://www.artandobject.com/rss.xml", "category": "news"},
-    {"name": "NYT Art & Design", "url": "https://rss.nytimes.com/services/xml/rss/nyt/ArtandDesign.xml", "category": "news"},
     {"name": "VernissageTV", "url": "https://www.vernissage.tv/feed/", "category": "exhibitions"},
     {"name": "Whitewall", "url": "https://whitewall.art/feed", "category": "artists"},
     {"name": "Booooooom", "url": "https://www.booooooom.com/feed/", "category": "artists"},

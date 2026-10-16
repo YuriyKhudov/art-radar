@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 from radar.notify import SEED_FILE, db, log
 
 ATOM = "{http://www.w3.org/2005/Atom}"
+# Платные разделы внутри бесплатных изданий (Artnet News Pro).
+PAID_CATEGORIES = {"The Back Room", "The Art Detective", "Artnet News Pro", "Pro"}
 
 
 def feeds():
@@ -47,6 +49,8 @@ def fetch_feed(url):
         root = ET.fromstring(resp.read())
     items = []
     for it in root.iter("item"):  # RSS 2.0
+        if {c.text.strip() for c in it.iter("category") if c.text} & PAID_CATEGORIES:
+            continue  # колонки только для подписчиков — программа бесплатная, их не показываем
         items.append({"link": (it.findtext("link") or "").strip(), "title": _plain(it.findtext("title"), 300),
                       "summary": _plain(it.findtext("description")), "published": _date(it.findtext("pubDate"))})
     for e in root.iter(f"{ATOM}entry"):  # Atom
@@ -93,7 +97,10 @@ def collect_news():
 
 
 def recent_articles(limit=400):
+    # Только издания, которые сейчас есть в каталоге: убранные (например, платные) больше не показываются.
+    names = [f["name"] for f in feeds()]
     rows = db().execute("SELECT link, source, category, title, summary, published_at, initial FROM articles "
-                        "ORDER BY published_at DESC LIMIT ?", (limit,)).fetchall()
+                        f"WHERE source IN ({','.join('?' * len(names))}) ORDER BY published_at DESC LIMIT ?",
+                        (*names, limit)).fetchall()
     return [{"id": link, "source": s, "category": c, "title": t, "summary": sm, "published": p, "initial": bool(ini)}
             for link, s, c, t, sm, p, ini in rows]
