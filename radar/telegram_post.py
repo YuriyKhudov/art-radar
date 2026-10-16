@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import tempfile
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -72,9 +73,13 @@ def build_post(videos, fairs, now=None, top=5):
 
 def telegram(token, method, **params):
     data = urllib.parse.urlencode(params).encode()
-    with urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}", data=data),
-                                timeout=30) as r:
-        res = json.loads(r.read())
+    try:
+        with urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}", data=data),
+                                    timeout=30) as r:
+            res = json.loads(r.read())
+    except urllib.error.HTTPError as e:  # Telegram объясняет причину в теле ответа
+        res = json.loads(e.read() or b"{}")
+        res.setdefault("description", f"HTTP {e.code}")
     if not res.get("ok"):
         raise RuntimeError(res.get("description"))
     return res["result"]
@@ -82,11 +87,18 @@ def telegram(token, method, **params):
 
 def last_topic(token):
     """Номер группы и ветки из самого свежего сообщения боту в ветке (для настройки)."""
-    for u in reversed(telegram(token, "getUpdates")):
+    updates = telegram(token, "getUpdates", allowed_updates=json.dumps(["message", "my_chat_member", "chat_member"]))
+    me = telegram(token, "getMe")
+    seen = []
+    for u in reversed(updates):
         m = u.get("message") or {}
-        if m.get("chat", {}).get("type") in ("group", "supergroup"):
-            return {"chat_id": m["chat"]["id"], "thread_id": m.get("message_thread_id") or "", "title": m["chat"].get("title", "")}
-    return {}
+        chat = m.get("chat") or (u.get("my_chat_member") or {}).get("chat") or {}
+        kind = next((k for k in u if k != "update_id"), "?")
+        seen.append(f"{kind} из «{chat.get('title') or chat.get('type', '?')}»")
+        if m and chat.get("type") in ("group", "supergroup"):
+            return {"chat_id": chat["id"], "thread_id": m.get("message_thread_id") or "", "title": chat.get("title", ""),
+                    "bot": me.get("username")}
+    return {"bot": me.get("username"), "seen": seen[:10]}
 
 
 def find_ids(token):
