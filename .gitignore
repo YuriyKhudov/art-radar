@@ -1,0 +1,14 @@
+# Публикуем только программу и готовые данные для сайта. Всё личное и тяжёлое остаётся на компьютере.
+*
+!.gitignore
+!.github/
+!.github/**
+!radar/
+!radar/*.py
+!site_data/
+!site_data/sales_stats.json
+!tests/
+!tests/*.py
+!sources_seed.json
+!README.md
+__pycache__/

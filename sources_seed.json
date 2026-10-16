@@ -1,0 +1,80 @@
+{
+  "verified_at": "2026-10-15",
+  "galleries": [
+    {
+      "slug": "artseeker-gallery",
+      "name": "Artseeker Gallery",
+      "city": "Brooklyn, New York",
+      "priority": 0,
+      "website": "https://www.artseekerartist.com/",
+      "artsy_partner_url": "https://www.artsy.net/partner/artseeker-gallery",
+      "youtube": [
+        {"name": "АМЕРИКА АРТ", "channel_id": "UCFwhVewMQbPKXD99Frzuvpw", "handle": "@americaart", "lang": "ru", "primary": true, "summarize": true, "note": "PRIMARY. Russian-language channel linked from the gallery website; fairs, sales, shipping, visas"},
+        {"name": "ARTSEEKER GALLERY", "channel_id": "UCIJTDHwTGnKdbVRyJyHtRzw", "handle": "@ArtseekerGallery", "lang": "en", "primary": false, "summarize": false, "note": "secondary: English shorts about gallery artists and fair announcements; used for the events calendar"}
+      ],
+      "fairs_2026_from_artsy": ["Affordable Art Fair Austin 2026", "Affordable Art Fair Houston 2026 (Oct 15-18, booth C2)", "Affordable Art Fair New York Fall 2026", "Hamptons Fine Art Fair 2026"],
+      "notes": "Self-reported figures on the website (e.g. number of works sold) are not confirmed sales and are not used in statistics."
+    }
+  ],
+  "youtube": [
+    {"name": "James Kalm Report", "channel_id": "UCMAQTBPIm_0zRgTQVjS2NIA", "handle": "@jameskalm", "category": "exhibitions", "region": "NYC", "priority": 1},
+    {"name": "James Kalm Rough Cut", "channel_id": "UCMpcK_m6Z23e0QvIn8dk8hg", "handle": "@jameskalmroughcut", "category": "exhibitions", "region": "NYC", "priority": 1},
+    {"name": "Mary Lynn Buchanan", "channel_id": "UC5Fj6asAU8JwL21dwM_VrWg", "handle": "@MaryLynn_Buchanan", "category": "exhibitions", "region": "NYC", "priority": 1},
+    {"name": "Art Intermezzo NYC", "channel_id": "UCKJDVc8B9ujxOQ-c3UMyn8g", "handle": "@ArtIntermezzoNYC", "category": "exhibitions", "region": "NYC", "priority": 1},
+    {"name": "NYC Gallery Openings", "channel_id": "UClc0PpFhveXvNgQuJK0bftQ", "handle": "@Nycgalleryopenings", "category": "exhibitions", "region": "NYC", "priority": 2},
+    {"name": "ART NYC", "channel_id": "UC32iFZ5Q0F1q0chChoNqU9g", "handle": "@ARTNYC", "category": "exhibitions", "region": "NYC", "priority": 2},
+    {"name": "VernissageTV", "channel_id": "UCLMVYzBVFLn1m8PLmfE43Cg", "handle": "@vernissagetv", "category": "exhibitions", "region": "international", "priority": 1},
+    {"name": "cOntemporary Art TV", "channel_id": "UCK0MrxBBYo_-whXBbBiB-WQ", "handle": "@OArtTelevision", "category": "fairs", "region": "international", "priority": 3},
+    {"name": "Art Basel", "channel_id": "UCBtGVupR621ytCdSG-z7jqQ", "handle": "@artbasel", "category": "fairs", "region": "international", "priority": 1},
+    {"name": "Frieze", "channel_id": "UCuq2_UpzU5wdK22jTuW8www", "handle": "@FriezeOfficial", "category": "fairs", "region": "international", "priority": 1},
+    {"name": "Artsy", "channel_id": "UCN413ScKXGZAVTk5GOl4tgw", "handle": "@artsy", "category": "fairs", "region": "international", "priority": 2},
+    {"name": "artnet", "channel_id": "UC_W3yUmWkG5k4AwblJDbzNg", "handle": "@artnet", "category": "market", "region": "international", "priority": 2},
+    {"name": "ArtTactic", "channel_id": "UCLghzA5c8-VuwXQWq2flqEQ", "handle": "@arttacticdotcom", "category": "market", "region": "international", "priority": 1},
+    {"name": "The Art Newspaper", "channel_id": "UCgZ6a4av7AwDJ4gatLaxZxA", "handle": "@TheArtNewspaperLive", "category": "market", "region": "international", "priority": 3},
+    {"name": "The Brooklyn Rail", "channel_id": "UCg5494A8baDwbIhYazEAgIw", "handle": "@thebrooklynrail", "category": "artists", "region": "NYC", "priority": 2},
+    {"name": "ARTnews", "channel_id": "UC08Z3HFs8ds6YtClAvbtVeQ", "handle": "@ARTnews", "category": "artists", "region": "NYC", "priority": 2},
+    {"name": "Art in America", "channel_id": "UC1v6H03Qs77_MWR3hGzlL6w", "handle": "@ArtinAmerica", "category": "artists", "region": "NYC", "priority": 3},
+    {"name": "Art21", "channel_id": "UC6Z_Gbfo7xwSMs6Ahkv-m3Q", "handle": "@art21org", "category": "artists", "region": "USA", "priority": 1},
+    {"name": "Louisiana Channel", "channel_id": "UCY2mhw-XNZSxrUynsI5K8Zw", "handle": "@thelouisianachannel", "category": "artists", "region": "international", "priority": 2},
+    {"name": "Savvy Painter", "channel_id": "UCxEBs_SBVG45BvQ2URzd8Cw", "handle": "@SavvyPainter", "category": "artists", "region": "USA", "priority": 3},
+    {"name": "Painting Nerds", "channel_id": "UCBfqi9W6Gn_FR8pgYDV43ug", "handle": "@paintingnerds", "category": "exhibitions", "region": "international", "priority": 3},
+    {"name": "Ocula Magazine", "channel_id": "UCIKvtlzlwFaUdO2BIkvbmwg", "handle": "@OculaMagazine", "category": "artists", "region": "international", "priority": 3},
+    {"name": "David Zwirner", "channel_id": "UCjinaEHPgFP_HHL63kRZsnQ", "handle": "@DavidZwirnerGalleries", "category": "exhibitions", "region": "NYC", "priority": 2},
+    {"name": "Gagosian", "channel_id": "UC4AR3sORYrcMkVKw0q75ZZQ", "handle": "@gagosian", "category": "exhibitions", "region": "NYC", "priority": 3},
+    {"name": "Hauser & Wirth", "channel_id": "UCmwkuoCJOD681XWL_3joE5w", "handle": "@hauserwirth", "category": "exhibitions", "region": "international", "priority": 3},
+    {"name": "Pace Gallery", "channel_id": "UCaHuA8TlLkcWpGPsNA7tuTw", "handle": "@pacegalleries", "category": "exhibitions", "region": "NYC", "priority": 3},
+    {"name": "Christie's", "channel_id": "UCSbY5GF1eSKtT6d32qC7Krw", "handle": "@christies", "category": "market", "region": "international", "priority": 3},
+    {"name": "Sotheby's", "channel_id": "UCelkSnSbxvIfjjD01uPHHbg", "handle": "@sothebys", "category": "market", "region": "international", "priority": 3},
+    {"name": "Phillips", "channel_id": "UCspEDiNKsoS7GkWKMX5CIrg", "handle": "@PhillipsAuctioneers", "category": "market", "region": "international", "priority": 3},
+    {"name": "Whitney Museum", "channel_id": "UCkIysc598DcproKIPlHBfCg", "handle": "@whitney_museum", "category": "exhibitions", "region": "NYC", "priority": 3}
+  ],
+  "rss": [
+    {"name": "ARTnews", "url": "https://www.artnews.com/feed/", "category": "news"},
+    {"name": "ARTnews Market", "url": "https://www.artnews.com/c/art-news/market/feed/", "category": "market"},
+    {"name": "Artnet News", "url": "https://news.artnet.com/feed", "category": "news"},
+    {"name": "Artnet News Market", "url": "https://news.artnet.com/market/feed", "category": "market"},
+    {"name": "The Art Newspaper", "url": "https://www.theartnewspaper.com/rss.xml", "category": "news"},
+    {"name": "Hyperallergic", "url": "https://hyperallergic.com/feed/", "category": "exhibitions"},
+    {"name": "Artforum", "url": "https://www.artforum.com/feed/", "category": "news"},
+    {"name": "Artsy Editorial", "url": "https://www.artsy.net/rss/news", "category": "news"},
+    {"name": "Two Coats of Paint", "url": "https://www.twocoatsofpaint.com/feed", "category": "exhibitions"},
+    {"name": "Galerie Magazine", "url": "https://galeriemagazine.com/feed/", "category": "fairs"},
+    {"name": "Art & Object", "url": "https://www.artandobject.com/rss.xml", "category": "news"},
+    {"name": "NYT Art & Design", "url": "https://rss.nytimes.com/services/xml/rss/nyt/ArtandDesign.xml", "category": "news"},
+    {"name": "VernissageTV", "url": "https://www.vernissage.tv/feed/", "category": "exhibitions"},
+    {"name": "Whitewall", "url": "https://whitewall.art/feed", "category": "artists"},
+    {"name": "Booooooom", "url": "https://www.booooooom.com/feed/", "category": "artists"},
+    {"name": "Artsper Magazine", "url": "https://blog.artsper.com/en/feed/", "category": "market"}
+  ],
+  "fairs": [
+    {"name": "NADA Miami", "start": "2026-12-01", "end": "2026-12-05", "city": "Miami", "venue": "Ice Palace Studios", "url": "https://www.newartdealers.org/fairs/nada-miami-2026"},
+    {"name": "Untitled Art, Miami Beach", "start": "2026-12-02", "end": "2026-12-06", "city": "Miami Beach", "venue": "Beach tent, Ocean Drive", "url": "https://untitledartfairs.com/"},
+    {"name": "Art Basel Miami Beach", "start": "2026-12-04", "end": "2026-12-06", "city": "Miami Beach", "venue": "Miami Beach Convention Center", "url": "https://www.artbasel.com/miami-beach"},
+    {"name": "Frieze Los Angeles", "start": "2027-02-25", "end": "2027-02-28", "city": "Los Angeles", "venue": "Santa Monica Airport", "url": "https://www.frieze.com/fairs/frieze-los-angeles"},
+    {"name": "EXPO Chicago", "start": null, "end": null, "city": "Chicago", "venue": "Navy Pier", "url": "https://www.expochicago.com/", "note": "в 2026 прошла 9–12 апреля"},
+    {"name": "Frieze New York", "start": null, "end": null, "city": "New York", "venue": "The Shed", "url": "https://www.frieze.com/fairs/frieze-new-york", "note": "в 2026 прошла 13–17 мая"},
+    {"name": "NADA New York", "start": null, "end": null, "city": "New York", "venue": "Starrett-Lehigh Building", "url": "https://www.newartdealers.org/", "note": "в 2026 прошла 13–17 мая"},
+    {"name": "Independent New York", "start": null, "end": null, "city": "New York", "venue": "Pier 36", "url": "https://www.independenthq.com/", "note": "в 2026 прошла 14–17 мая"},
+    {"name": "The Armory Show", "start": null, "end": null, "city": "New York", "venue": "Javits Center", "url": "https://www.thearmoryshow.com/", "note": "в 2026 прошла 24–27 сентября"}
+  ]
+}
