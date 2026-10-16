@@ -214,6 +214,7 @@ button:hover,.btn:hover{filter:brightness(.97)}
 .chip.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .chip small{opacity:.75;font-weight:700;margin-left:4px}
 .list{display:grid;gap:16px}
+.list .more{grid-column:1/-1;width:100%}
 .card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow)}
 .card.new{border-color:var(--accent);box-shadow:0 0 0 2px var(--soft),var(--shadow)}
 .vcard{display:grid;grid-template-columns:220px 1fr;gap:18px}
@@ -412,6 +413,7 @@ const daysTo = s => Math.ceil((new Date(s + "T00:00:00") - new Date(new Date().t
 let current = (location.hash.slice(1) || store.get("artradar-section", "videos"));
 if (!SECTIONS.some(s => s.id === current)) current = "videos";
 const filters = {videos:"", shorts:"", news:""};
+const PAGE = 40, limits = {};  // сколько карточек показано в ленте; растёт по кнопке «Показать ещё»
 // Шортсы — короткие вертикальные ролики; YouTube отдаёт их по ссылке вида /shorts/…
 const isShort = v => v.url.includes("/shorts/");
 const pool = kind => kind === "videos" ? DATA.videos.filter(v => !isShort(v))
@@ -476,10 +478,22 @@ function feed(kind){
   });
   const mk = kind === "videos" ? videoCard : kind === "shorts" ? shortCard : articleCard;
   const fl = document.getElementById("fresh");
-  if (fresh.length) fl.replaceChildren(...fresh.slice(0, 60).map(i => mk(i, true)));
+  // Показываем порциями, ниже — кнопка «Показать ещё».
+  const more = (list, items, key, fresh) => {
+    const n = limits[key] || PAGE;
+    list.replaceChildren(...items.slice(0, n).map(i => mk(i, fresh)));
+    if (items.length > n) {
+      const b = document.createElement("button");
+      b.className = "btn more";
+      b.textContent = `Показать ещё (осталось ${items.length - n})`;
+      b.onclick = () => { limits[key] = n + PAGE; render(); };
+      list.append(b);
+    }
+  };
+  if (fresh.length) more(fl, fresh, kind + ":fresh", true);
   else fl.innerHTML = '<div class="empty"><b>Всё просмотрено ✨</b>Как только появится новое, оно будет здесь.</div>';
   const ol = document.getElementById("old");
-  if (ol) ol.replaceChildren(...old.slice(0, 60).map(i => mk(i, false)));
+  if (ol) more(ol, old, kind + ":old", false);
   const all = document.getElementById("allSeen");
   if (all) all.onclick = () => { markSeen(fresh.map(i => i.id)); render(); };
 }
@@ -728,7 +742,7 @@ function sold(){
     const top = Object.entries(bySize).sort((a, b) => b[1].length - a[1].length).slice(0, 12);
     box.innerHTML = `
       <p class="sub">Подтверждённые аукционные продажи в США: <b>${nWorks(TOTAL)}</b>
-        ${soldPeriod ? "" : `за ${Math.min(...years)}–${Math.max(...years)} годы`}.</p>
+        за ${soldPeriod ? PERIODS.find(p => p[0] === soldPeriod)[1].replace("до 2000", "годы до 2000") : `${Math.min(...years)}–${Math.max(...years)}`}${soldPeriod === "1999" ? "" : " годы"}.</p>
       <div class="chips">${PERIODS.map(([k, name]) => `<button class="chip ${k === soldPeriod ? "on" : ""}" data-period="${k}">${name}</button>`).join("")}</div>
       <h2>Что продаётся</h2>
       <div class="cats">${[["", ["🖼", "Всё"]], ...Object.entries(CATS).filter(([k]) => count(k))].map(([k, [ic, name]]) => {
