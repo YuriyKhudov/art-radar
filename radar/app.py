@@ -319,6 +319,17 @@ details summary::-webkit-details-marker{display:none}
 .scard .meta{font-size:13px}
 .scard .mark{min-height:40px;font-size:14px}
 .sizes{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+.card.size.must{border:1px solid var(--accent)}
+.advhead{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin:0 0 6px}
+.advhead .sub{flex:1 1 380px;margin:0}
+.ladder{display:flex;align-items:flex-end;gap:22px;overflow-x:auto;padding:22px 18px 14px;background:var(--soft);border-radius:18px;margin:0 0 10px}
+.ladder figure{margin:0;flex:none;display:flex;flex-direction:column;align-items:center;gap:10px;font-size:13px;color:var(--muted);text-align:center}
+.ladder figure b{color:var(--ink);font-size:14px}
+.famname{font-size:16px;margin:16px 0 8px}
+.advtips{padding-left:20px;display:grid;gap:10px;font-size:16px;line-height:1.5;max-width:860px}
+.advtips b{color:var(--ink)}
+.answers .advhit{border:1px solid var(--accent)}
+.advhit a{display:block}
 .card.size{display:flex;flex-direction:column;gap:2px;text-align:center;align-items:center}
 .easelbox{padding:6px!important}
 .easelbox svg{width:100%;height:auto;max-width:260px;display:block;margin:auto}
@@ -457,6 +468,8 @@ body.cinema .dot.on::before{background:var(--accent)}
   .cat b{font-size:14px}
   .cat span:last-child{font-size:11px;line-height:1.35}
   .sizes{grid-template-columns:1fr 1fr;gap:10px}
+  .dsk{display:none}
+  .ladder{flex-wrap:wrap;gap:16px 14px;overflow:visible;padding:16px 14px 12px}
   .card.size{padding:8px}
   .card.size span{font-size:12px;line-height:1.35}
   .stage.small{min-height:0;padding:2px}
@@ -945,9 +958,10 @@ const sz = store.get("artradar-size", {h:60, w:80, unit:"cm"});
 function formats(){
   document.getElementById("view").innerHTML = `
     <h1>Форматы</h1>
-    <div class="chips"><button class="chip on">Мой размер</button><button class="chip" id="soldTab">Что покупают</button></div>
+    <div class="chips"><button class="chip on">Мой размер</button><button class="chip" id="soldTab">Что покупают</button><button class="chip" id="advTab">⭐ Советы<span class="dsk"> Artseeker</span></button></div>
     <div id="fmt"></div>`;
   document.getElementById("soldTab").onclick = sold;
+  document.getElementById("advTab").onclick = advice;
   mySize();
 }
 function mySize(){
@@ -1008,7 +1022,10 @@ function update(){
     <div><b>${f1(hc)} × ${f1(wc)} см = ${f1(hc / 2.54)} × ${f1(wc / 2.54)} дюймов</b>высота × ширина</div>
     <div><b>${orient[0].toUpperCase() + orient.slice(1)}, ${group}</b>${near ? "пропорция " + near[1] : "своя пропорция, примерно " + f1(r) + " : 1"}</div>
     <div><b>Ближайший американский стандарт</b>${stdText(std[0])}<br><span class="meta">также: ${std.slice(1).map(stdText).join("; ")}</span></div>
+    ${std[0].d < 2 && ADV_SET.has(Math.min(std[0].a, std[0].b) + "x" + Math.max(std[0].a, std[0].b)) ? `<div class="advhit"><b>⭐ Этот размер советует галерея Artseeker</b><a href="#" id="toAdv">Почему — во вкладке «Советы Artseeker» →</a></div>` : ""}
     ${similarSold(hc, wc)}`;
+  const ga = document.getElementById("toAdv");
+  if (ga) ga.onclick = e => { e.preventDefault(); advice(); scrollTo(0, 0); };
   const go = document.getElementById("toSold");
   if (go) go.onclick = e => { e.preventDefault(); sold(); scrollTo(0, 0); };
 }
@@ -1028,6 +1045,77 @@ function similarSold(hc, wc){
     живопись — ${p.toLocaleString("ru-RU")}, графика — ${g.toLocaleString("ru-RU")}${sim.length >= MIN_SHARE ? ` (примерно ${Math.round(p / sim.length * 100)} из 100 — живопись)` : ""}.
     <br><span class="meta">Та же форма, площадь ±25%. Аукционы США ${Math.min(...years)}–${Math.max(...years)}. Это не прогноз — каждая картина уникальна.</span>
     <br><a href="#" id="toSold">Смотреть статистику проданных форматов →</a></div>`;
+}
+
+// ---------- форматы: советы галереи Artseeker (эфир канала «АМЕРИКА АРТ», 22.10.2026) ----------
+// Размеры в дюймах: [короткая сторона, длинная, пояснение, "h" — показать горизонтально].
+const ADV_VIDEO = "https://www.youtube.com/watch?v=7DaxghKTx0Y";
+const ADV = {
+  must: [[24,24,"Самый удачный квадрат — «запомните этот размер»"],[24,36,"Самый понятный американский формат: стандартные холсты, рамы и коробки"],
+         [30,40,"Переход к большим работам, всё ещё удобен в доставке"],[36,48,"Классический галерейный формат"]],
+  small: [[8,10,"Этюды и подарки, легко оформить в раму"],[9,12,"Обычный размер в США, хотя в Европе такие холсты редкость"],
+          [11,14,"Графика на бумаге: в паспарту и раму 16 × 20"],[12,12,"Серии: на стене ярмарки 2 ряда по 3 или 3 по 3, можно продавать сетами"],
+          [12,16,"Один из трёх лучших маленьких"],[16,20,"Очень популярный — и для холстов, и для работ в раме"]],
+  medium: [[18,24,"Доступный средний формат"],[20,20,"Квадрат, близок к нашему 50 × 50"],[24,24,"Лучший квадрат"],[24,36,"Подходит к большинству стен, легко отправить"]],
+  large: [[30,30,"Переход от среднего к большому"],[30,40,"Хороший коммерческий формат"],[36,48,"Очень стандартный большой"],
+          [40,60,"«Главный герой комнаты»: над диваном или кроватью","h"],[36,36,"Большой квадрат"],[48,48,"Большой квадрат, идеален для США"]],
+  fair: [[48,72,"Самый популярный большой размер на ярмарках: абстракция, фигуратив, символизм"],[36,72,"Вытянутая горизонталь","h"]],
+  line: [[12,12,"маленькая"],[18,24,"доступная"],[24,36,"основная"],[30,40,"серьёзная"],[36,48,"крупная"],[40,60,"главный герой"]],
+  families: [["3 : 4", [[12,16],[18,24],[30,40],[36,48]]], ["2 : 3", [[12,18],[20,30],[24,36],[40,60]]], ["Квадрат", [[12,12],[20,20],[24,24],[36,36],[48,48]]]],
+};
+const ADV_SET = new Set(["must","small","medium","large","fair"].flatMap(k => ADV[k].map(([a, b]) => a + "x" + b)));
+const inCm = n => Math.round(n * 2.54);
+function advCard([a, b, why, hz], cls = ""){
+  const [h, w] = hz ? [a, b] : [b, a];
+  return `<div class="card size ${cls}"><div class="stage small easelbox">${easel(h, w)}</div>
+    <b class="big">${a} × ${b} дюймов</b><span class="meta">${inCm(a)} × ${inCm(b)} см</span><span>${why}</span></div>`;
+}
+function advice(){
+  const chips = document.querySelectorAll(".chips .chip");
+  chips.forEach((b, i) => b.classList.toggle("on", i === 2));
+  chips[0].onclick = formats; chips[1].onclick = sold;
+  const ladder = (list, k) => `<div class="ladder">${list.map(([a, b, label]) => `<figure>
+      ${canvasBox(b, a, b * k * (innerWidth <= 760 ? .7 : 1))}<figcaption><b>${a} × ${b}″</b>${label ? `<br>${label}` : ""}</figcaption></figure>`).join("")}</div>`;
+  document.getElementById("fmt").innerHTML = `
+    <div class="advhead">
+      <p class="sub">Опыт нью-йоркской галереи <b>Artseeker</b>: около 70 из 100 её покупателей — из США, продажи онлайн и на арт-ярмарках.
+        Это советы галереи, а не подсчёт продаж.</p>
+      <a class="btn main" href="${ADV_VIDEO}" target="_blank" rel="noopener">▶ Смотреть эфир на YouTube</a>
+    </div>
+    <h2>4 размера, которые стоит иметь</h2>
+    <p class="meta">Галерея называет их «must have» для портфолио.</p>
+    <div class="sizes">${ADV.must.map(x => advCard(x, "must")).join("")}</div>
+    <h2>Линейка для коммерческой коллекции</h2>
+    <p class="meta">Холсты нарисованы в одном масштабе. Так один и тот же покупатель найдёт у вас работу и для кабинета, и для гостиной.</p>
+    ${ladder(ADV.line, 2.2)}
+    <h2>Маленькие</h2>
+    <p class="meta">Доступная цена, дешёвая доставка — «точка входа» для нового коллекционера. Тройка лучших: 12 × 12, 12 × 16 и 16 × 20.</p>
+    <div class="sizes">${ADV.small.map(x => advCard(x)).join("")}</div>
+    <h2>Средние — коммерческое ядро</h2>
+    <p class="meta">Полноценная работа для многих мест в доме, её можно отправить прямо на подрамнике.</p>
+    <div class="sizes">${ADV.medium.map(x => advCard(x)).join("")}</div>
+    <h2>Большие</h2>
+    <p class="meta">Для больших домов, офисов и гостиниц. Больших форматов пишут немногие, поэтому и конкуренция меньше. Рабочие варианты: 30 × 40, 36 × 48 и 40 × 60.</p>
+    <div class="sizes">${ADV.large.map(x => advCard(x)).join("")}</div>
+    <h2>Для арт-ярмарок</h2>
+    <div class="sizes">${ADV.fair.map(x => advCard(x)).join("")}</div>
+    <h2>Семьи пропорций</h2>
+    <p class="meta">У размеров одной семьи одинаковое соотношение сторон: композицию можно перенести с маленького холста на большой, ничего не «поедет».</p>
+    ${ADV.families.map(([name, list]) => `<h3 class="famname">${name}</h3>${ladder(list.map(([a, b]) => [a, b, ""]), 1.6)}`).join("")}
+    <h2>Советы галереи</h2>
+    <ul class="advtips">
+      <li><b>Указывайте размеры в дюймах.</b> Покупатели в США ищут по дюймам, и площадки фильтруют по ним: работа 120 × 90 см не попадёт в поиск «36 × 48».</li>
+      <li><b>Имейте работы разных размеров.</b> Двадцать работ 100 × 100 смотрятся цельно, но покупателю, которому нужен размер поменьше, не из чего выбрать.</li>
+      <li><b>Стандартный размер — стандартная рама.</b> Под нестандартный нужна рама на заказ, а это дорого: покупатель задумается или попросит скидку.</li>
+      <li><b>Нестандартные, круглые и овальные работы</b> тоже продаются, но дольше ищут покупателя. Не делайте их основой ассортимента.</li>
+      <li><b>Большие работы пишите на отрезе холста</b> под дюймовый подрамник, с запасом 6–7 см с каждой стороны (из них около 4 см уйдёт на торцы), торцы прокрашивайте. Такую работу можно дёшево отправить свёрнутой в тубусе.</li>
+      <li><b>Не снимайте работу с сантиметрового подрамника</b> для отправки: на дюймовый её ровно не натянуть, видны края и следы сгибов.</li>
+      <li><b>Холст — лён плотностью от 240 г/м²,</b> чтобы не деформировался при повторной натяжке.</li>
+      <li><b>Перед публикацией измерьте холст рулеткой.</b> Галерея однажды потеряла продажу из-за ошибки в размере.</li>
+      <li><b>Размер не продаст слабую работу.</b> Он лишь убирает ещё одно препятствие между картиной и покупателем.</li>
+    </ul>
+    <p class="note">Источник: эфир галереи Artseeker «Продаёте картины в США? Не теряйте покупателей из-за размеров», канал «АМЕРИКА АРТ», 22 октября 2026.
+      <a href="${ADV_VIDEO}" target="_blank" rel="noopener">Смотреть ↗</a></p>`;
 }
 // ---------- рисунок «холст на мольберте» (вариант 4 от Codex, design/canvas_variants.html) ----------
 // Лицевая сторона холста не искажается: высота / ширина = heightIn / widthIn.
