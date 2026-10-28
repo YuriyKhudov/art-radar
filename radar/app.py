@@ -211,7 +211,12 @@ a{color:var(--accent)}
 .aboutbtn{display:block;width:calc(100% - 24px);margin:14px 12px 0;min-height:44px;padding:0 14px;font-size:14px;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--ink)}
 .aboutbtn:hover{border-color:var(--accent)}
 .aboutbtn.m{display:none}
-@media (min-width:761px){.side{display:flex;flex-direction:column}.side .aboutbtn{margin-top:auto}}
+.tglink{display:block;margin:0 12px;padding:10px 14px;font-size:14px;color:var(--muted);text-decoration:none;border-radius:999px}
+.tglink:hover{color:var(--ink);background:var(--soft)}
+.tglink.m{display:none}
+.tgnote{font-size:14px;color:var(--muted);margin:10px 0 0}
+.tgnote a{white-space:nowrap}
+@media (min-width:761px){.side{display:flex;flex-direction:column}.side .tglink{margin-top:auto}}
 .logo{font:600 30px/1 "Cormorant Garamond",Georgia,serif;padding:4px 12px 20px}
 .nav{display:grid;gap:4px}
 .nav a{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;color:var(--ink);text-decoration:none;font-weight:600}
@@ -427,7 +432,10 @@ body.cinema .dot.on::before{background:var(--accent)}
   .looktoggle.m{display:block;margin:0;min-height:30px;font-size:11px;padding:0 10px;white-space:nowrap}
   .side .looktoggle{display:none}
   .side .aboutbtn{display:none}
-  .aboutbtn.m{display:block;width:100%;margin:24px 0 8px}
+  .side .tglink{display:none}
+  .mfoot{display:flex;gap:8px;margin:24px 0 8px}
+  .aboutbtn.m{display:block;flex:1;width:auto;margin:0}
+  .tglink.m{display:flex;align-items:center;justify-content:center;flex:1;margin:0;border:1px solid var(--line);min-height:44px;padding:0 10px}
   body.cinema .hero{margin-top:0}
 }
 /* нижняя панель на телефоне */
@@ -538,9 +546,10 @@ html.welcome-open,html.welcome-open body{overflow:hidden;overscroll-behavior:non
     <nav class="nav" id="nav"></nav>
     <div class="status" id="status"></div>
     <button class="looktoggle" data-look-toggle></button>
+    <a class="tglink" href="https://t.me/ArtKitchen0/5485" target="_blank" rel="noopener">✈️ Наш Telegram</a>
     <button class="aboutbtn" data-about>ℹ️ О программе</button>
   </aside>
-  <main><div class="wrap"><div class="topline"><div class="status-m" id="status2"></div><button class="looktoggle m" data-look-toggle></button></div><div class="install" id="install" hidden></div><div id="view"></div><button class="aboutbtn m" data-about>ℹ️ О программе</button></div></main>
+  <main><div class="wrap"><div class="topline"><div class="status-m" id="status2"></div><button class="looktoggle m" data-look-toggle></button></div><div class="install" id="install" hidden></div><div id="view"></div><div class="mfoot"><a class="tglink m" href="https://t.me/ArtKitchen0/5485" target="_blank" rel="noopener">✈️ Наш Telegram</a><button class="aboutbtn m" data-about>ℹ️ О программе</button></div></div></main>
 </div>
 
 <dialog class="welcome" id="welcome" aria-labelledby="welcome-title" aria-describedby="welcome-intro">
@@ -563,7 +572,7 @@ html.welcome-open,html.welcome-open body{overflow:hidden;overscroll-behavior:non
       <li>Как в Телеграме: цифры показывают, сколько нового, а «✓» убирает просмотренное.</li>
       <li>Всё обновляется само каждый час.</li>
       <li>Добавьте сайт на экран телефона как приложение.</li>
-      <li>Подборка лучшего — через день в телеграм-группе «Арт кухня», ветка Art Radar.</li>
+      <li>Подборка лучшего — через день в телеграм-группе <a href="https://t.me/ArtKitchen0/5485" target="_blank" rel="noopener">«Арт кухня» ↗</a>, ветка Art Radar.</li>
     </ul></div>
   </div>
   <div class="welcome-footer"><button class="welcome-start" type="button">Начать смотреть</button></div>
@@ -755,7 +764,8 @@ function feed(kind){
     ${old.length ? `<details ${words.length ? "open" : ""}><summary>Уже просмотренные (${old.length}) ▾</summary><div class="list ${kind}" id="old"></div></details>` : ""}
     <p class="note">${kind === "opps" ? "Open calls, резиденции и гранты из Hyperallergic, Artist Communities Alliance и ArtDeadline. Перед подачей проверяйте условия: у некоторых конкурсов есть взнос за участие (entry fee)."
       : isVideo ? "Видео и картинки — с YouTube. Нажмите «Смотреть», и видео откроется на YouTube."
-      : "Статьи открываются на сайтах изданий. Многие издания пишут по-английски."}</p>`;
+      : "Статьи открываются на сайтах изданий. Многие издания пишут по-английски."}</p>
+    ${kind === "opps" ? "" : `<p class="tgnote">Лучшее за неделю — в Telegram-группе <a href="https://t.me/ArtKitchen0/5485" target="_blank" rel="noopener">«Арт кухня» →</a></p>`}`;
   if (withHero) startHero(); else stopHero();
   const sb = v.querySelector(".search");
   sb.oninput = () => {
