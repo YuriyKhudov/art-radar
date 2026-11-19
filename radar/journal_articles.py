@@ -166,7 +166,9 @@ class ArticleChecks:
         fingerprint = hashlib.sha256(body.encode()).hexdigest()
         authored = self.reviewed.get(card.key, {})
         reviewed = authored.get("source_sha256") == fingerprint
-        for instruction in ("", "Оставь только прямо подтверждённые конкретные детали. Разбей их на три абзаца."):
+        for instruction in ("\nСохраняй словоформу имён из подтверждающих фрагментов или упоминай только фамилию.",
+                             "\nСосредоточься на трёх конкретных наблюдениях из разных частей статьи. "
+                             "Оставь только данные, которые можно указать на уровне абзаца. Не приводи чисел без необходимости."):
             draft = authored if reviewed else self.model.complete(WRITER + instruction, {"topic": card.item["title"],
                         "article": dict(enumerate(original, 1))}, 740, DRAFT_SCHEMA)
             verified = verified_summary(draft, original, exact_names=not reviewed)

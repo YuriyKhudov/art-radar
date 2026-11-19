@@ -10,10 +10,11 @@ from radar import artist_pages, artist_radar, editorial_sources as sources, jour
 
 COMMONS = "commons.wikimedia.org"
 CHICAGO = "api.artic.edu"
+WIKIDATA = "www.wikidata.org"
 AGENT = "ArtRadarJournal/1.1 (https://github.com/YuriyKhudov/art-radar)"
 NAME = re.compile(r"\b[А-ЯЁ][а-яё-]{3,}(?:\s+(?:ван|де|да|фон|дель))?\s+[А-ЯЁ][а-яё-]{2,}\b")
 QUOTED = re.compile(r"«([^»\n]{5,95})»|„([^“\n]{5,95})“")
-MEDIUM = re.compile(r"\b(?:oil|painting|canvas|watercolou?r|drawing|etching|lithograph|гравюр\w*|живопис\w*|портрет|холст|масло|акварел\w*|пастел\w*|гуаш\w*)\b", re.I)
+MEDIUM = re.compile(r"\b(?:oil|paintings?|canvas|watercolou?r|drawings?|etching|lithograph|гравюр\w*|живопис\w*|холст|масло|акварел\w*|пастел\w*|гуаш\w*)\b", re.I)
 REJECT = re.compile(r"\b(?:detail|cropped|postcard|poster|sketchbook page|building|facade|flag|map|signature|logo|афиша|фасад|открытка|почтовая марка|логотип|фрагмент)\b", re.I)
 ARTIST_ALIASES = {
     "суриков": "Vasily Surikov", "серов": "Valentin Serov", "врубел": "Mikhail Vrubel",
@@ -25,6 +26,8 @@ ARTIST_ALIASES = {
     "вермеер": "Johannes Vermeer", "кандинск": "Wassily Kandinsky", "малевич": "Kazimir Malevich",
     "фальк": "Robert Falk", "рубенс": "Peter Paul Rubens", "веласкес": "Diego Velázquez",
     "пикассо": "Pablo Picasso", "климт": "Gustav Klimt", "босх": "Hieronymus Bosch",
+    "брейгел": "Pieter Bruegel the Elder", "ван эйк": "Jan van Eyck", "да винчи": "Leonardo da Vinci",
+    "рафаэл": "Raphael", "джотто": "Giotto", "боттичелли": "Sandro Botticelli", "герик": "Théodore Géricault",
 }
 LICENSES = {"cc-zero": "CC0", "cc-by-4.0": "CC BY 4.0", "cc-by-sa-4.0": "CC BY-SA 4.0",
             "pd": "Public Domain"}
@@ -41,6 +44,12 @@ def display(value):
 def equivalent(text, name):
     normalized = artist_radar.normalize(text)
     return bool(name and artist_radar.contains(normalized, artist_radar.normalize(name)))
+
+
+def same_artist(credit, authors):
+    return (any(equivalent(credit, name) for name in authors)
+            or any(name in authors and re.search(r"(?<!\w)" + stem + r"[а-яё]{0,5}(?!\w)", credit, re.I)
+                   for stem, name in ARTIST_ALIASES.items()))
 
 
 def search_terms(card, topic, page, config):
@@ -69,14 +78,16 @@ def search_terms(card, topic, page, config):
                                    if isinstance(n, dict) and isinstance(n.get("name"), str))
     for context in contexts[:10]:
         named_works.extend(a or b for a, b in QUOTED.findall(context))
-    if topic in {"exhibition", "fair", "photography", "art"}:
-        authors.extend(NAME.findall(evidence)[:3])
+    if topic in {"exhibition", "fair", "photography"}:
+        participants = re.findall(r"(?:работы|произведения|участники:|фотографии|картины)\s+([^.!?]{4,130})", evidence, re.I)
+        for participant in participants:
+            authors.extend(NAME.findall(participant)[:3])
     for context in (title, *authors):
         for stem, original in ARTIST_ALIASES.items():
             if original not in authors and re.search(r"(?<!\w)" + stem + r"[а-яё]{0,5}(?!\w)", context, re.I):
                 authors.insert(0, original)
     authors = list(dict.fromkeys(authors))[:6]
-    works = list(dict.fromkeys(named_works))[:4]
+    works = [work for work in dict.fromkeys(named_works) if len(work.split()) >= 2 or len(work) >= 7][:4]
     # Keep named works ahead of subject/creator fallback, and leave quotes out of API syntax.
     terms = [(work, "work") for work in works[:2]]
     terms += [(name, "artist") for name in authors[:3]]
@@ -100,6 +111,33 @@ def commons_query(term, file=False):
     return data.get("query", {}).get("pages", [])
 
 
+@lru_cache(maxsize=128)
+def wikidata_work(title):
+    def api(**parameters):
+        url = f"https://{WIKIDATA}/w/api.php?{urlencode(dict(format='json', **parameters))}"
+        return json.loads(sources.request(url, ["wikidata.org"], 800_001, user_agent=AGENT)[0])
+
+    query = api(action="wbsearchentities", search=title, language="ru", uselang="ru", limit=5)
+    ids = [r["id"] for r in query.get("search", []) if re.fullmatch(r"Q\d+", r.get("id", ""))
+           and artist_radar.normalize(r.get("label", "")) == artist_radar.normalize(title)]
+    if not ids:
+        return [], []
+    entities = api(action="wbgetentities", ids="|".join(ids), props="claims|labels", languages="ru|en")["entities"]
+    aliases, files = [], []
+    for item in entities.values():
+        claims = item.get("claims", {})
+        types = {row.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id") for row in claims.get("P31", [])}
+        if not types & {"Q3305213", "Q838948", "Q18761202", "Q93184", "Q125191", "Q11060274"} or not claims.get("P170"):
+            continue
+        if label := item.get("labels", {}).get("en", {}).get("value"):
+            aliases.append(label)
+        for row in claims.get("P18", [])[:1]:
+            file = row.get("mainsnak", {}).get("datavalue", {}).get("value")
+            if isinstance(file, str):
+                files.append("File:" + file)
+    return aliases, files
+
+
 def commons_asset(row, topic, authors, works, term, purpose):
     image = next(iter(row.get("imageinfo", [])), {})
     meta = image.get("extmetadata", {})
@@ -117,9 +155,9 @@ def commons_asset(row, topic, authors, works, term, purpose):
             or not sources.allowed(origin, [COMMONS]) or REJECT.search(filename)):
         return None
     category = field("Categories")
-    object_name = field("ObjectName") or filename.rsplit(".", 1)[0]
+    object_name = re.split(r"(?:title|label) QS:", field("ObjectName"), maxsplit=1)[0].strip() or filename.rsplit(".", 1)[0]
     identity = " ".join((object_name, filename, caption[:400]))
-    matched_creator = any(equivalent(creator, name) for name in authors)
+    matched_creator = same_artist(creator, authors)
     matched_work = any(equivalent(identity, work) for work in works)
     matched_topic = equivalent(identity, term) and purpose == "topic"
     role = None
@@ -135,7 +173,8 @@ def commons_asset(row, topic, authors, works, term, purpose):
     elif topic == "technique" and matched_topic and re.search(r"finished (?:painting|drawing)|результат урока", caption, re.I):
         role = "technique_result"
     elif topic in {"artist", "art", "fair", "exhibition", "architecture"} and (matched_work or matched_creator) and (
-            MEDIUM.search(" ".join((caption, category, filename))) and (matched_creator or purpose in {"file", "work"})):
+            MEDIUM.search(" ".join((caption, category, filename))) or "PD-Art (" in category) and (
+            matched_creator or purpose in {"file", "work"}) and not REJECT.search(caption[:120]):
         role = "artwork"
     if not role:
         return None
@@ -159,7 +198,7 @@ def chicago_asset(record, authors, works):
     image = record.get("image_id") or ""
     if (record.get("is_public_domain") is not True or not re.fullmatch(r"[0-9a-f-]{36}", image)
             or not isinstance(record.get("id"), int)
-            or not any(equivalent(creator, name) for name in authors)
+            or not same_artist(creator, authors)
             or not (record.get("artwork_type_title") in {"Painting", "Drawing and Watercolor", "Print"}
                     or any(equivalent(work, name) for name in works))):
         return None
@@ -173,13 +212,25 @@ def chicago_asset(record, authors, works):
 def search(card, topic, page, config, read_page=journal_articles.public_page, robots=None):
     terms, authors, works = search_terms(card, topic, page, config)
     results, trace, seen = [], [], set()
+    title = card.item.get("original_title") or card.item["title"]
+    named_subject = bool(re.search(r"разбор одного шедевра", title, re.I) and works)
     for href in (page.links if page else []):
         if sources.allowed(href, [COMMONS]) and (marker := re.search(r"/wiki/(File:[^?#]+)", unquote(href))):
             terms.insert(0, (marker[1].replace("_", " "), "file"))
+    if named_subject:
+        try:
+            aliases, files = wikidata_work(works[0])
+            trace.append({"provider": "Wikidata", "query": works[0], "basis": "work", "matched": len(files)})
+            works += aliases
+            terms = [(file, "file") for file in files[:2]] + [(name, "work") for name in aliases[:1]] + terms
+        except (OSError, KeyError, TypeError, ValueError):
+            trace.append({"provider": "Wikidata", "query": works[0], "status": "unavailable"})
     for term, purpose in terms[:5]:
         try:
             records = commons_query(term, file=purpose == "file")
             matches = [asset for row in records if (asset := commons_asset(row, topic, authors, works, term, purpose))]
+            if named_subject:
+                matches = [asset for asset in matches if any(equivalent(asset["work"], work) for work in works)]
             trace.append({"provider": "Wikimedia Commons", "query": term, "basis": purpose,
                           "found": len(records), "matched": len(matches)})
             for asset in matches:
@@ -190,8 +241,8 @@ def search(card, topic, page, config, read_page=journal_articles.public_page, ro
             trace.append({"provider": "Wikimedia Commons", "query": term, "basis": purpose, "status": "unavailable"})
         if len(results) >= 5:
             break
-    if topic in {"art", "artist", "exhibition", "fair"} and len(results) < 5:
-        for term in [name for name, purpose in terms if purpose == "artist" and name.isascii()][:2]:
+    if not named_subject and topic in {"art", "artist", "exhibition", "fair"} and len(results) < 5:
+        for term in [name for name, purpose in terms if purpose == "artist" and not sources.CYRILLIC.search(name)][:2]:
             try:
                 records = chicago_query(term)
                 matches = [asset for row in records if (asset := chicago_asset(row, authors, works))]

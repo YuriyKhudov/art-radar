@@ -71,6 +71,10 @@ class Reserve:
         self.connection.executemany("UPDATE editorial_reserve SET verified_on=? WHERE url=?",
                                     [(now.date().isoformat(), url) for url in urls])
 
+    def confirmed(self, now):
+        return {row[0] for row in self.connection.execute(
+            "SELECT url FROM editorial_reserve WHERE expires >= ? AND verified_on IS NOT NULL", (now.date().isoformat(),))}
+
     def remove(self, urls):
         self.connection.executemany("DELETE FROM editorial_reserve WHERE url=?", [(url,) for url in urls])
 

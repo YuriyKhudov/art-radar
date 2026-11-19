@@ -114,13 +114,14 @@ class Journal:
             live, report = collected_inputs(config, now)
         registry = config.get("artist_radar")
         oldest = (now.date() - dt.timedelta(days=config["news_days"] + 2)).isoformat()
+        reserve_candidates = []
         with self.conn:
             self.conn.executemany("INSERT OR REPLACE INTO feed_items VALUES (?, ?, ?)",
                                   [(sources.canonical(item["url"]), encode(item), today) for item in live])
             self.conn.execute("DELETE FROM feed_items WHERE collected < ?", (oldest,))
             if config.get("accumulate_reserve"):
-                candidates, _ = editorial.assess(live, config, now, self.history())
-                self.editorial_reserve.replenish(candidates, now, config["news_days"])
+                reserve_candidates, _ = editorial.assess(live, config, now, self.history())
+                self.editorial_reserve.replenish(reserve_candidates, now, config["news_days"])
             if registry:
                 profiles = artist_radar.discoveries(live, registry, limit=1000)
                 self.conn.executemany(
@@ -140,6 +141,8 @@ class Journal:
             # Failed sources retain the previous successful harvest; a full failure can retry next tick.
             if not report or any(row["status"] == "ok" for row in report):
                 self.put("collected_on", today)
+        if reserve_candidates and config.get("video_link_fallback"):
+            qualify_video_reserve(self.editorial_reserve, reserve_candidates, now)
         for row in report:
             print(f"{row['source']} · {row['status']} · {row['count']}")
         return True
@@ -184,6 +187,9 @@ class Journal:
                 updated = self.conn.execute("UPDATE issues SET status='released' WHERE id=? AND status='pending'", (issue,))
             if not updated.rowcount:
                 raise ValueError("Выпуск не находится в состоянии ожидания подтверждения")
+            if message_id:
+                batch = self.conn.execute("SELECT items FROM issues WHERE id=?", (issue,)).fetchone()[0]
+                self.editorial_reserve.remove(row["url"] for row in json.loads(batch))
 
 
 def checkpoint(db, expected_branch=STATE_BRANCH):
@@ -345,6 +351,22 @@ def visual_audit(review):
                                 for asset in review["images"] if asset.get("registry")]}
 
 
+def qualify_video_reserve(reserve, cards, now, verifier=None):
+    verified = reserve.confirmed(now)
+    choices = sorted((card for card in cards if card.key not in verified and card.item["kind"] == "video"
+                      and journal_visuals.video_permalink(card.key)), key=lambda card: (card.stream == "priority", card.score),
+                     reverse=True)
+    publishers = {}
+    for card in choices:
+        publishers.setdefault(card.publisher, card)
+    choices = list(publishers.values())[:8]
+    check_link = verifier or check
+    with ThreadPoolExecutor(max_workers=4) as workers:
+        results = list(workers.map(lambda card: check_link(card.item["url"], card.source["domains"]), choices))
+    with reserve.connection:
+        reserve.confirm((card.key for card, passed in zip(choices, results) if passed), now)
+
+
 def verified_visual_issue(visual):
     cards = visual.get("cards", [])
     if visual.get("policy") != journal_visuals.POLICY or not 2 <= len(cards) <= 4:
@@ -480,11 +502,11 @@ i{color:#5b5245;font-size:.9em}
                                                  "snapshot_sha256": snapshot_hash, "diversity": diversity,
                                                  "sources": report, "issues": issues, "discoveries": discoveries},
                                                 ensure_ascii=False, indent=2), encoding="utf-8")
-    save_audit(output, issues, report, verified, diversity, snapshot_hash, registry, discoveries)
+    save_audit(output, issues, report, verified, diversity, snapshot_hash, registry, discoveries, reserve_report)
     print(output / "index.html")
 
 
-def save_audit(output, issues, report, verified, diversity, snapshot_hash, registry=None, discoveries=()):
+def save_audit(output, issues, report, verified, diversity, snapshot_hash, registry=None, discoveries=(), reserve_report=None):
     codes = {"usefulness": "Польза", "originality": "Оригинальность", "language": "Язык",
              "source": "Источник", "freshness": "Актуальность"}
     source_rows = [f"<li>{html.escape(row.get('name', row['source']))} · {html.escape(row['status'])} · {row['count']}</li>"
@@ -499,7 +521,14 @@ def save_audit(output, issues, report, verified, diversity, snapshot_hash, regis
             title = editorial.link(row["title"], row["url"])
             reason = html.escape(row.get("reason", ""))
             via = html.escape(row.get("provenance") or "")
-            item = f"<li>{title}<br>{html.escape(subtitle)}<br>{html.escape(ratings)}<br>{reason}<br>{via}</li>"
+            review = row.get("visual_review", {})
+            assets = "".join(f'<li>{editorial.link(asset["credit"], asset["source"])} · {html.escape(asset["license"])}'
+                             f' · {html.escape(asset["registry"])}</li>' for asset in review.get("external_assets", []))
+            queries = [f'<li>{html.escape(entry["provider"])} · {html.escape(entry["query"])} · '
+                       f'{entry.get("matched", 0)} подходящих записей</li>' for entry in review.get("search", [])]
+            visual_details = (f'<details><summary>Поиск иллюстраций</summary><ul>{assets}{"".join(queries)}</ul></details>'
+                              if assets or queries else "")
+            item = f"<li>{title}<br>{html.escape(subtitle)}<br>{html.escape(ratings)}<br>{reason}<br>{via}{visual_details}</li>"
             grouped.setdefault(row["decision"], []).append(item)
         blocks = []
         for decision, items in sorted(grouped.items(), key=lambda pair: pair[0] != "Выбран в выпуск"):
@@ -517,6 +546,15 @@ details{{margin:9px 0;border:1px solid #d7d0c4;padding:6px 12px;border-radius:6p
 <a href="audit.json">Данные JSON</a></p><p>{mode}</p>"""
     if source_rows:
         page += f"<h2>Собрано из лент · {sum(row['count'] for row in report)}</h2><ul>{''.join(source_rows)}</ul>"
+    if reserve_report:
+        categories = {"news": "Свежие новости", "event": "Выставки и события", "practice": "Уроки и техники",
+                      "discovery": "Художественные открытия", "archive": "Архивные статьи и фильмы"}
+        before = reserve_report["before"]
+        page += "<h2>Накопительный резерв</h2><ul>" + "".join(
+            f'<li>{name} · подтверждено {before["verified"].get(key, 0)} · ожидают проверки {before["pending"].get(key, 0)}</li>'
+            for key, name in categories.items()) + "</ul>"
+        for index, run in enumerate(reserve_report["issues"], 1):
+            page += f'<p>Выпуск {index} · взято из резерва {len(run["selected"])}</p>'
     mix = " · ".join(f"{html.escape(editorial.DIRECTIONS[key])} {count}" for key, count in diversity["directions"].items())
     page += (f"<h2>Тематическое разнообразие</h2><p>{mix}</p>"
              f"<p>Источников {len(diversity['publishers'])} · видео {diversity['videos']} · "
@@ -1260,7 +1298,14 @@ def main():
                     article_config = {**config, "article_edits": {}} if args.automatic_issues else config
                     article_checks = journal_articles.ArticleChecks(article_config, saved=replay.get("articles") if replay else None,
                                                                    allow_new=bool(replay and "visuals" not in replay))
-            visuals = check_visuals(config, saved=replay.get("visuals") if replay else None, offline=args.offline)
+            visual_config = config
+            if args.automatic_issues:
+                presentation = config.get("presentation", {})
+                automatic_cards = {url: {key: value for key, value in card.items() if key not in {"image", "native_video"}}
+                                   for url, card in presentation.get("cards", {}).items()}
+                visual_config = {**config, "presentation": {**presentation, "cards": automatic_cards,
+                                 "visual_images": {}, "cover_images": {}}}
+            visuals = check_visuals(visual_config, saved=replay.get("visuals") if replay else None, offline=args.offline)
             issues = []
             reserve = None
             reserve_report = None
@@ -1270,6 +1315,8 @@ def main():
                 eligible, _ = editorial.assess(pool, config, now, history)
                 with journal.conn:
                     reserve.replenish(eligible, now, config["news_days"])
+                if args.automatic_issues:
+                    qualify_video_reserve(reserve, eligible, now, verify)
                 reserve_report = {"before": reserve.report(now), "issues": []}
             for sequence, (as_of, theme) in enumerate(selections, count + 1):
                 picked, issue = prepare(pool, config, history, as_of, theme, sequence, verify=verify,
@@ -1278,6 +1325,8 @@ def main():
                     picked, issue = prepare(pool, config, history, as_of, None, sequence, verify=verify,
                                             article_checks=article_checks, visual_checks=visuals, reserve=reserve)
                 issue["as_of"] = as_of.date().isoformat()
+                if args.automatic_issues:
+                    issue["cover"] = None
                 issues.append(issue)
                 history.extend({**candidate.item, "_issued_at": as_of.isoformat()} for candidate in picked)
                 if reserve is not None:

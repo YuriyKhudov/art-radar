@@ -13,7 +13,9 @@ def collect(config):
 
     def harvest(pair):
         source, url = pair
-        report = {"source": f"{source['id']}-archive:{urlsplit(url).path}", "name": source["name"],
+        parts = urlsplit(url)
+        key = parts.path + (f"?{parts.query}" if parts.query else "")
+        report = {"source": f"{source['id']}-archive:{key}", "name": source["name"],
                   "endpoint": url, "status": "ok", "count": 0}
         try:
             page = journal_articles.public_page(url, source["domains"], {})
