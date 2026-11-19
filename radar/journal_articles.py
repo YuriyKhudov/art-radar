@@ -114,11 +114,16 @@ def evidence_groups(original, title):
     return groups
 
 
-def focused_draft(model, original, title):
+def focused_draft(model, original, title, previous=None, feedback=()):
     groups = evidence_groups(original, title)
     payload = {name: [original[index - 1] for index in indices] for name, indices in groups.items()}
-    result = model.complete(FOCUSED_WRITER, {"topic": title, "short": sum(map(len, original)) < 1100,
-                            "blocks": payload}, 630, FOCUSED_SCHEMA)
+    data = {"topic": title, "short": sum(map(len, original)) < 1100, "blocks": payload}
+    prompt = FOCUSED_WRITER
+    if previous:
+        prompt += ("\nЭто повторная редактура. Исправь замечания к черновику, заново сверив каждый абзац с блоком фактов. "
+                   "Убери числа и имена, которые не нужны для понимания. Оставь содержательные подробности и полные предложения.")
+        data.update(previous=[part["text"] for part in previous["paragraphs"]], feedback=list(feedback))
+    result = model.complete(prompt, data, 680, FOCUSED_SCHEMA)
     if isinstance(result, dict) and all(isinstance(result.get(name), str) for name in PARTS):
         return {"paragraphs": [{"text": result[name], "evidence": groups[name]} for name in PARTS]}
     return None
@@ -223,17 +228,20 @@ class ArticleChecks:
         fingerprint = hashlib.sha256(body.encode()).hexdigest()
         authored = self.reviewed.get(card.key, {})
         reviewed = authored.get("source_sha256") == fingerprint
-        failures = []
+        failures, feedback, draft = [], [], None
         for attempt in range(1 if reviewed else 2):
             if reviewed:
                 draft = authored
-            elif attempt == 0 and len(original) >= 3:
-                draft = focused_draft(self.model, original, card.item["title"])
+            elif len(original) >= 3:
+                draft = focused_draft(self.model, original, card.item["title"], previous=draft,
+                                      feedback=feedback or failures)
             else:
                 instruction = "\nСохраняй словоформу имён из подтверждающих фрагментов или упоминай только фамилию."
                 draft = self.model.complete(WRITER + instruction, {"topic": card.item["title"],
                             "article": dict(enumerate(original, 1))}, 740, DRAFT_SCHEMA)
             verified = verified_summary(draft, original, exact_names=not reviewed, diagnose=failures)
+            if draft is None and isinstance(self.model, LocalEditor) and self.model.last_error:
+                failures[-1] += f":{self.model.last_error}"
             if verified:
                 summaries, checks = verified
                 audit = {"supported": True, "problems": []} if reviewed else self.model.complete(CHECKER, checks, 220, CHECK_SCHEMA)
@@ -242,4 +250,6 @@ class ArticleChecks:
                             "paragraphs": len(original), "source_characters": len(body),
                             "verification": "reviewed" if reviewed else "local-model"}
                 failures.append("fact-check")
+                if isinstance(audit, dict) and isinstance(audit.get("problems"), list):
+                    feedback = [note[:180] for note in audit["problems"][:3] if isinstance(note, str)]
         return {"reason": "Не получено самостоятельное изложение с подтверждёнными фактами", "checks": failures}

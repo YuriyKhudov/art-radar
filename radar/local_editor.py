@@ -50,6 +50,7 @@ class LocalEditor:
         self.process = None
         self.url = None
         self.failed = False
+        self.last_error = None
         self.http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def close(self):
@@ -98,23 +99,48 @@ class LocalEditor:
         raise ValueError("Локальная модель не запустилась.")
 
     def complete(self, system, payload, max_tokens, schema):
+        self.last_error = None
         if self.failed:
+            self.last_error = "startup"
             return None
         try:
             if self.process is None:
                 self.start()
         except (OSError, ValueError, StopIteration):
             self.failed = True
+            self.last_error = "startup"
             return None
         try:
             request = {"messages": [{"role": "system", "content": system},
                                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
                        "response_format": {"type": "json_object", "schema": schema}, "temperature": 0, "seed": 21,
-                       "max_tokens": max_tokens}
+                       "max_tokens": max_tokens, "stream": True}
             call = urllib.request.Request(self.url + "/v1/chat/completions",
                                           data=json.dumps(request, ensure_ascii=False).encode("utf-8"),
                                           headers={"Content-Type": "application/json"})
-            with self.http.open(call, timeout=145) as response:
-                return json.loads(json.load(response)["choices"][0]["message"]["content"])
-        except (OSError, ValueError, KeyError, TypeError):
+            deadline = time.monotonic() + 165
+            completion = ""
+            with self.http.open(call, timeout=70) as response:
+                for line in response:
+                    if time.monotonic() >= deadline:
+                        self.last_error = "deadline"
+                        return None
+                    if not line.startswith(b"data: ") or line.strip() == b"data: [DONE]":
+                        continue
+                    choice = next(iter(json.loads(line[6:]).get("choices", [])), {})
+                    content = choice.get("delta", {}).get("content") or ""
+                    completion += content
+                    if content and completion.rstrip().endswith("}"):
+                        try:
+                            return json.loads(completion)
+                        except json.JSONDecodeError:
+                            pass
+            self.last_error = "incomplete-json"
+        except (TimeoutError, OSError) as error:
+            self.last_error = "timeout" if isinstance(error, TimeoutError) else "connection"
+            if self.process and self.process.poll() is not None:
+                self.process = None
+        except (ValueError, KeyError, TypeError):
+            self.last_error = "invalid-stream"
             return None
+        return None
