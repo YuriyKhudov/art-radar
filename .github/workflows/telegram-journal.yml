@@ -33,6 +33,9 @@ on:
         description: Проверить вёрстку на свежих материалах с подтверждёнными иллюстрациями
         type: boolean
         default: false
+      preview_urls:
+        description: Ссылки пробной подборки через пробел. Обычный запуск использует все источники
+        type: string
   schedule:
     - cron: "0,30 * * * *"
 
@@ -58,8 +61,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Установить средство подготовки обложки
-        run: python -m pip install "Pillow==12.3.0"
+      - name: Установить средства подготовки журнала
+        run: python -m pip install "Pillow==12.3.0" "trafilatura==2.3.1" "Protego==0.7.0"
       - uses: actions/download-artifact@v4
         if: inputs.preview_run_id != ''
         with:
@@ -89,6 +92,9 @@ jobs:
         env:
           EXCLUDE_RUN_ID: ${{ inputs.exclude_run_id }}
           ILLUSTRATED: ${{ inputs.illustrated }}
+          PREVIEW_URLS: ${{ inputs.preview_urls }}
+          ART_RADAR_RUN_LOCAL_EDITOR: '1'
+          ART_RADAR_EDITOR_CACHE: ${{ runner.temp }}/art-radar-editor
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
           JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
         run: |
@@ -96,6 +102,8 @@ jobs:
           args=()
           if [[ -n "$EXCLUDE_RUN_ID" ]]; then args+=(--exclude-audit excluded-preview/audit.json); fi
           if [[ "$ILLUSTRATED" == true ]]; then args+=(--illustrated); fi
+          read -r -a preview_urls <<< "$PREVIEW_URLS"
+          for url in "${preview_urls[@]}"; do args+=(--only-url "$url"); done
           python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
@@ -226,9 +234,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Установить средство подготовки обложки
+      - name: Установить средства подготовки журнала
         if: github.event_name == 'schedule'
-        run: python -m pip install "Pillow==12.3.0"
+        run: python -m pip install "Pillow==12.3.0" "trafilatura==2.3.1" "Protego==0.7.0"
       - name: Проверить готовность группы или обработать расписание
         if: github.event_name == 'schedule' || inputs.mode == 'prepare_group'
         env:
@@ -236,6 +244,8 @@ jobs:
           ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
           ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
           ART_RADAR_JOURNAL_FORMAT: ${{ vars.ART_RADAR_JOURNAL_FORMAT }}
+          ART_RADAR_RUN_LOCAL_EDITOR: '1'
+          ART_RADAR_EDITOR_CACHE: ${{ runner.temp }}/art-radar-editor
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
           JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
           JOURNAL_TELEGRAM_TOKEN: ${{ secrets.JOURNAL_TELEGRAM_TOKEN }}

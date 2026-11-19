@@ -121,7 +121,8 @@ def shorten(text, length):
 class RulesEditor:
     def edit(self, raw, source):
         if raw.get("reviewed"):
-            return {**raw, "direction": "archive" if raw["type"] == "archive" else "news"}, ""
+            direction = "archive" if raw["type"] == "archive" else raw.get("direction", "news")
+            return {**raw, "direction": direction}, ""
         raw_evidence = raw.get("evidence", "")
         evidence = sources.description(raw_evidence)
         title = re.sub(r"\s+#[\w]+", "", raw["title"]).strip()
@@ -370,8 +371,9 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None):
 
         eligible.sort(key=priority, reverse=True)
         for candidate in eligible:
-            if verify and not verify(candidate):
-                rejected[candidate.key] = "Прямая ссылка не прошла сетевую проверку"
+            outcome = verify(candidate) if verify else True
+            if isinstance(outcome, str) or not outcome:
+                rejected[candidate.key] = outcome or "Прямая ссылка не прошла сетевую проверку"
                 continue
             picked.append(candidate)
             rubrics[candidate.direction] += 1
@@ -501,7 +503,7 @@ def visual_assets(item, config):
         role_order.update(artwork=1, video_frame=0, video_preview=0)
     ranked = sorted(pictures.values(), key=lambda image: role_order.get(image.get("role"), 2))
     art = [image for image in ranked if image.get("role") != "portrait"]
-    return (art or ranked)[:3]
+    return (art or ranked)[:1 if item["kind"] == "video" else 5]
 
 
 def render_visual(picked, config, theme, now):
@@ -509,10 +511,20 @@ def render_visual(picked, config, theme, now):
     output = []
     for candidate, card in zip(ordered, cards):
         item = candidate.item
-        summary = next((value for value in card["summaries"] if value and length(html.escape(value)) <= 200), "")
-        output.append({"section": card["heading"], "title": card["title"], "summary": summary,
-                       "byline": card["byline"], "action": card["action"], "url": item["url"],
-                       "images": visual_assets(item, config)})
+        article = item.get("journal_article")
+        custom = config.get("presentation", {}).get("cards", {}).get(candidate.key, {})
+        author = (item.get("artist_radar") or {}).get("artist")
+        feature = custom.get("feature_artist") or (author if card["heading"] == "🔎 Художник в поле зрения" else None)
+        if feature:
+            feature = config.get("presentation", {}).get("names", {}).get(feature, feature)
+        summary = article["summary"] if article else next(
+            (value for value in card["summaries"] if value and length(html.escape(value)) <= 200), "")
+        section = "🎨 Художник в поле зрения" if feature and article else custom.get("section", card["heading"])
+        output.append({"section": section, "artist": feature if article else None, "title": card["title"],
+                       "summary": summary, "article": bool(article), "byline": card["byline"],
+                       "action": "Читать оригинал" if article else card["action"],
+                       "url": article["url"] if article else item["url"], "images": visual_assets(item, config),
+                       "video": custom.get("native_video") if item["kind"] == "video" else None})
     return {"header": "\n".join(header), "cards": output}
 
 

@@ -10,7 +10,7 @@ from contextlib import closing, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from radar import editorial, editorial_sources as sources, journal_cover, telegram_journal as journal, visual_issue
+from radar import editorial, editorial_sources as sources, journal_articles, journal_cover, telegram_journal as journal, visual_issue
 
 NOW = dt.datetime(2026, 11, 18, 19, tzinfo=journal.MOSCOW)
 CONFIG = sources.read(sources.ROOT / "sources.json")
@@ -142,11 +142,45 @@ class EditorialTest(unittest.TestCase):
         self.assertEqual(data["rich_message"].count("<tg-button type="), 4)
         self.assertEqual(data["rich_message"].count('tg://photo?id='), 4)
         self.assertEqual(data["rich_message"].count("<hr/>"), 3)
-        self.assertEqual(data["rich_message"].count("<tg-slideshow>"), 1)
+        self.assertEqual(data["rich_message"].count("<tg-collage>"), 1)
+        self.assertNotIn("<tg-slideshow>", data["rich_message"])
         self.assertNotIn("Б ·", data["rich_message"])
         for card in issue["cards"]:
             self.assertIn(f'<b>{editorial.link(card["title"], card["url"])}</b>',
                           json.loads(data["rich_message"])["html"])
+
+    def test_mosaic_keeps_each_work_and_protects_extreme_aspect_ratios(self):
+        figures = [(str(i), {"aspect": ratio}) for i, ratio in enumerate((1.2, .73, 1.4, 1.1, 3.0))]
+        rows = visual_issue.mosaic_rows(figures)
+        self.assertEqual([[identifier for identifier, _ in row] for row in rows], [["1", "0", "2", "3"], ["4"]])
+
+    def test_text_card_keeps_editorial_paragraphs_and_a_small_source_link(self):
+        card = {"section": "Художник", "artist": "Валентин Серов", "title": "Приёмы портрета", "article": True,
+                "summary": "Первый абзац.\n\nВторой абзац.", "byline": "Arzamas", "action": "Читать оригинал",
+                "url": "https://arzamas.academy/example"}
+        body = visual_issue.rich_html("Art Radar", [card], [[]])
+        self.assertIn("<b>Валентин Серов</b>", body)
+        self.assertIn("Первый абзац.</p><p>Второй абзац.", body)
+        self.assertIn('href="https://arzamas.academy/example">Читать оригинал</a>', body)
+        self.assertNotIn("<tg-button", body)
+
+    def test_foreign_article_requires_a_full_russian_edition_before_synthesis(self):
+        from types import SimpleNamespace
+
+        foreign = "https://example.org/full"
+        read = Mock(return_value=None)
+        model = Mock()
+        item = SimpleNamespace(key=foreign, item={"url": foreign, "title": "Художник", "ru_editorial": True},
+                               source={"lang": "en", "domains": ["example.org"]})
+        config = {"article_domains": ["example.ru"]}
+        checks = journal_articles.ArticleChecks(config, read=read, model=model)
+        self.assertIn("русская версия", checks.check(item)["reason"])
+        read.assert_not_called()
+        config["russian_editions"] = {foreign: "https://example.ru/translation"}
+        translated = journal_articles.ArticleChecks(config, read=read, model=model)
+        self.assertIn("Полный открытый", translated.check(item)["reason"])
+        read.assert_called_once_with("https://example.ru/translation", ["example.ru"], {})
+        model.complete.assert_not_called()
 
     def test_transmission_switches_to_classic_only_for_explicit_unsupported_response(self):
         rich = ("sendRichMessage", {}, [])
@@ -300,7 +334,7 @@ class JournalTest(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.folder.cleanup)
         self.path = Path(self.folder.name) / "journal.sqlite3"
-        self.config = {**CONFIG, "theme_every": 0}
+        self.config = {**CONFIG, "theme_every": 0, "article_domains": []}
         self.quiet = redirect_stdout(io.StringIO())
         self.quiet.__enter__()
         self.addCleanup(self.quiet.__exit__, None, None, None)

@@ -11,6 +11,96 @@
   "max_items": 4,
   "theme_every": 0,
   "previously_published": [],
+  "article_domains": [
+    "arzamas.academy",
+    "lavrus.tretyakov.ru",
+    "theartnewspaper.ru",
+    "kommersant.ru",
+    "artuzel.com",
+    "artmoskovia.ru",
+    "iskusstvo-info.ru",
+    "daily.afisha.ru",
+    "culture.ru",
+    "ar.culture.ru",
+    "rusmuseum.ru"
+  ],
+  "article_edits": {
+    "https://arzamas.academy/mag/487-serov": {
+      "source_sha256": "633f840812d576eb14e94788d934e8b9b656eb26e34cc020f049dee83a07f106",
+      "paragraphs": [
+        {
+          "text": "У Серова портрет начинается с того, как человек существует среди вещей. В «Девочке с персиками» открытый цвет и лёгкая диагональ создают ощущение случайного взгляда, хотя фигура устойчива, а пространство тщательно построено. Свежесть света здесь во многом держится на сложном письме: подмалёвке, полупрозрачных слоях краски и рефлексах на скатерти.",
+          "evidence": [
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "text": "В портрете Зинаиды Юсуповой художник сдерживает движения кисти у лица, а в интерьере даёт ей волю. Платье, диван и белая шерсть шпица словно продолжают друг друга. Для Генриетты Гиршман он придумал другую сцену: зеркало удваивает комнату и позволяет увидеть самого Серова у мольберта. Матовость темперы удерживает весь этот блеск вещей в сдержанной гамме.",
+          "evidence": [
+            6,
+            7,
+            8
+          ]
+        },
+        {
+          "text": "В портрете Иды Рубинштейн пространство, напротив, становится почти плоским. Главная роль достаётся острому контуру фигуры. Искусствовед Галина Ельшевская связывает его с модерном и с артистизмом самой балерины: её пластика позволяет Серову сделать главным в портрете не интерьер и не светский ритуал, а силу силуэта.",
+          "evidence": [
+            13,
+            14,
+            15
+          ]
+        }
+      ]
+    },
+    "https://theartnewspaper.ru/posts/20261119-swzp": {
+      "source_sha256": "490bd4221326b41fd67d28462ed8a75ac8bfd23e71d23618230a392d7d5af475",
+      "paragraphs": [
+        {
+          "text": "Московская фотобиеннале в МАММ идёт до 29 ноября. Три персональные выставки показывают, сколько вымысла может быть в снимке, который кажется документом. В серии «Нежность» Ян Шлегель подходит к кактусам так близко, что колючие растения напоминают складки ткани. Для другой серии он собирал пробы морской воды: фитопланктон в его кадрах похож на крошечные предметы из стекла и металла.",
+          "evidence": [
+            1,
+            2
+          ]
+        },
+        {
+          "text": "Роджер Баллен, наоборот, оставляет в кадре следы постановки. В «Комнате теней» это проволока, вешалки и напряжённые позы. В инсталляции «Инферно» мотивы Данте превращаются в светящиеся изображения: зритель видит фотографии рисунков, сделанных на стекле.",
+          "evidence": [
+            4
+          ]
+        },
+        {
+          "text": "Александра Катьер снимает ещё более косвенные портреты. В серии «Пасхальный букет» она фотографировала цветы, которые каждую неделю доставляли жительнице дома престарелых, а потом раскрашивала чёрно-белые отпечатки красителями для яиц. Рассказ о человеке складывается из его привычек и того, что ему дорого. Это та же способность фотографии показывать невидимое, но без театральной резкости Баллена.",
+          "evidence": [
+            5,
+            6
+          ]
+        }
+      ]
+    },
+    "https://artuzel.com/content/s-4-po-6-dekabrya-v-prostranstve-ton-centr-proydet-vtoroy-vypusk-yarmarki-grafiki-oberton": {
+      "source_sha256": "4877e2c5d8a6a3df3eb41c721fe6bf392fe27319f214d98ed0f0ce2d14dbddc8",
+      "paragraphs": [
+        {
+          "text": "Второй «Обертон» пройдёт с 4 по 6 декабря в московском ТОН-ЦЕНТРЕ. На ярмарке графики соберутся 37 галерей. Среди участников — стенды с работами Виктора Пивоварова, Александры Гарт и Артёма Ляпина. Отдельный повод прийти — совместный проект издательства «Носорог» и мастерской «послезавтра»: они покажут шелкографии, сделанные по мотивам книг издательства.",
+          "evidence": [
+            1,
+            2,
+            5,
+            7
+          ]
+        },
+        {
+          "text": "На моностенде Максима Саввы будет больше 20 работ. В его графике соседствуют бытовые сюжеты, образы массовой культуры и фразы из записной книжки. Часть программы рассчитана на тех, кто не сможет приехать: с 1 по 15 декабря на платформе ТЕО откроется онлайн-версия с расширенной подборкой листов.",
+          "evidence": [
+            8,
+            11
+          ]
+        }
+      ]
+    }
+  },
   "presentation": {
     "visual_comparison": [
       "https://youtube.com/watch?v=Lt4pX0ZhjsQ",
@@ -18,8 +108,63 @@
       "https://jacksonsart.com/blog/2026/11/16/behind-the-movement-the-hudson-river-school"
     ],
     "visual_comparison_sources": {"jacksons": "artist-jacksons"},
+    "native_video_domains": ["peppercarrot.com"],
     "visual_image_domains": ["thumb.wikimedia.org"],
     "visual_images": {
+      "https://arzamas.academy/mag/487-serov": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/b/b0/Zinaida_Yusupova_by_V.Serov_%281900-1902%2C_GRM%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+          "source": "https://commons.wikimedia.org/?curid=3242822",
+          "aspect": 0.7222,
+          "license": "Public domain",
+          "credit": "Валентин Серов, «Портрет Зинаиды Юсуповой» · Русский музей",
+          "role": "artwork"
+        },
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/71/Valentin_Serov_-_Ida_Rubenstein_-_Google_Art_Project.jpg/1920px-Valentin_Serov_-_Ida_Rubenstein_-_Google_Art_Project.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+          "source": "https://commons.wikimedia.org/?curid=21853883",
+          "aspect": 1.6211,
+          "license": "Public domain",
+          "credit": "Валентин Серов, «Ида Рубинштейн» · Русский музей",
+          "role": "artwork"
+        },
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Valentin_Serov_-_%D0%9F%D0%BE%D1%80%D1%82%D1%80%D0%B5%D1%82_%D0%93.%D0%9B.%D0%93%D0%B8%D1%80%D1%88%D0%BC%D0%B0%D0%BD_-_Google_Art_Project.jpg/1920px-Valentin_Serov_-_%D0%9F%D0%BE%D1%80%D1%82%D1%80%D0%B5%D1%82_%D0%93.%D0%9B.%D0%93%D0%B8%D1%80%D1%88%D0%BC%D0%B0%D0%BD_-_Google_Art_Project.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+          "source": "https://commons.wikimedia.org/?curid=13501275",
+          "aspect": 0.9862,
+          "license": "Public domain",
+          "credit": "Валентин Серов, «Портрет Генриетты Гиршман» · Третьяковская галерея",
+          "role": "artwork"
+        },
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Valentin_Serov_-_%D0%94%D0%B5%D0%B2%D0%BE%D1%87%D0%BA%D0%B0_%D1%81_%D0%BF%D0%B5%D1%80%D1%81%D0%B8%D0%BA%D0%B0%D0%BC%D0%B8._%D0%9F%D0%BE%D1%80%D1%82%D1%80%D0%B5%D1%82_%D0%92.%D0%A1.%D0%9C%D0%B0%D0%BC%D0%BE%D0%BD%D1%82%D0%BE%D0%B2%D0%BE%D0%B9_-_Google_Art_Project.jpg/1920px-Valentin_Serov_-_%D0%94%D0%B5%D0%B2%D0%BE%D1%87%D0%BA%D0%B0_%D1%81_%D0%BF%D0%B5%D1%80%D1%81%D0%B8%D0%BA%D0%B0%D0%BC%D0%B8._%D0%9F%D0%BE%D1%80%D1%82%D1%80%D0%B5%D1%82_%D0%92.%D0%A1.%D0%9C%D0%B0%D0%BC%D0%BE%D0%BD%D1%82%D0%BE%D0%B2%D0%BE%D0%B9_-_Google_Art_Project.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+          "source": "https://commons.wikimedia.org/?curid=13501096",
+          "aspect": 0.8888,
+          "license": "Public domain",
+          "credit": "Валентин Серов, «Девочка с персиками» · Третьяковская галерея",
+          "role": "artwork"
+        }
+      ],
+      "https://theartnewspaper.ru/posts/20261119-swzp": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e8/Multimedia_Art_Museum%2C_Moscow_2022_May.jpg/1920px-Multimedia_Art_Museum%2C_Moscow_2022_May.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+          "source": "https://commons.wikimedia.org/?curid=118198991",
+          "aspect": 1,
+          "license": "CC BY-SA 4.0",
+          "credit": "Здание МАММ на Остоженке, 2022 · фото JukoFF",
+          "role": "venue"
+        }
+      ],
+      "https://artuzel.com/content/s-4-po-6-dekabrya-v-prostranstve-ton-centr-proydet-vtoroy-vypusk-yarmarki-grafiki-oberton": [
+        {
+          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/10/%D0%9A%D1%80%D1%83%D0%B3%D0%BE%D0%B2%D0%BE%D0%B5_%D0%B4%D0%B5%D0%BF%D0%BE_%D0%9D%D0%B8%D0%BA%D0%BE%D0%BB%D0%B0%D0%B5%D0%B2%D1%81%D0%BA%D0%BE%D0%B9_%D0%B6%D0%B5%D0%BB%D0%B5%D0%B7%D0%BD%D0%BE%D0%B9_%D0%B4%D0%BE%D1%80%D0%BE%D0%B3%D0%B8_%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0_2024.png/1920px-%D0%9A%D1%80%D1%83%D0%B3%D0%BE%D0%B2%D0%BE%D0%B5_%D0%B4%D0%B5%D0%BF%D0%BE_%D0%9D%D0%B8%D0%BA%D0%BE%D0%BB%D0%B0%D0%B5%D0%B2%D1%81%D0%BA%D0%BE%D0%B9_%D0%B6%D0%B5%D0%BB%D0%B5%D0%B7%D0%BD%D0%BE%D0%B9_%D0%B4%D0%BE%D1%80%D0%BE%D0%B3%D0%B8_%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0_2024.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+          "source": "https://commons.wikimedia.org/?curid=153152143",
+          "aspect": 1.5098,
+          "license": "CC BY-SA 4.0",
+          "credit": "Круговое депо, где пройдёт «Обертон», 2024 · фото Никонико962",
+          "role": "venue"
+        }
+      ],
       "https://rutube.ru/video/7bf028a6d5da62e4ff4979993ed9405d": [
         {
           "url": "https://upload.wikimedia.org/wikipedia/commons/c/c3/%22%D0%9D%D0%B5_%D0%B8%D1%81%D1%87%D0%B5%D0%B7%D0%B0%D0%B9%22%2C_%D0%90._%D0%9C%D0%B8%D1%80%D0%B7%D0%BE%D1%8F%D0%BD.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
@@ -113,6 +258,29 @@
       }
     },
     "cards": {
+      "https://arzamas.academy/mag/487-serov": {
+        "title": "Четыре способа увидеть человека",
+        "feature_artist": "Валентин Серов"
+      },
+      "https://theartnewspaper.ru/posts/20261119-swzp": {
+        "title": "Что фотография придумывает",
+        "section": "🖼 Статья"
+      },
+      "https://artuzel.com/content/s-4-po-6-dekabrya-v-prostranstve-ton-centr-proydet-vtoroy-vypusk-yarmarki-grafiki-oberton": {
+        "title": "«Обертон». Ярмарка искусства на бумаге",
+        "section": "🌍 Мир искусства"
+      },
+      "https://peppercarrot.com/en/miniFantasyTheater/079.html": {
+        "title": "Давид Ревуа. Как рождается страница комикса",
+        "section": "🎬 В мастерской",
+        "native_video": {
+          "url": "https://www.peppercarrot.com/0_sources/miniFantasyTheater/making-of/079.mp4",
+          "source": "https://www.peppercarrot.com/en/miniFantasyTheater/079.html#bonus",
+          "credit": "Давид Ревуа, таймлапс MiniFantasyTheater № 79",
+          "license": "CC BY-SA 4.0",
+          "seconds": 44
+        }
+      },
       "https://rutube.ru/video/7bf028a6d5da62e4ff4979993ed9405d": {
         "title": "Артур Мирзоян о мастерстве и концепции",
         "summary": "Художник-постановщик и живописец объясняет, что для него важнее в современном искусстве.",
@@ -192,6 +360,7 @@
     }
   },
   "sources": [
+    {"id":"revoy","name":"Давид Ревуа · Pepper&Carrot","lang":"en","origin":"FR","priority":4.8,"creator":true,"enabled":true,"domains":["peppercarrot.com"]},
     {"id":"tanr","name":"The Art Newspaper Russia","lang":"ru","priority":4.8,"enabled":true,"domains":["theartnewspaper.ru"],"feed":"https://www.theartnewspaper.ru/rss/","feed_alternate":"https://www.theartnewspaper.ru/rss","feed_domains":["theartnewspaper.ru"]},
     {"id":"artmoskovia","name":"АртМосковия","lang":"ru","priority":3.9,"enabled":true,"domains":["artmoskovia.ru"],"feed":"https://artmoskovia.ru/feed","feed_domains":["artmoskovia.ru"]},
     {"id":"artuzel","name":"ART Узел","lang":"ru","priority":4.4,"enabled":true,"domains":["artuzel.com"],"feed":"https://artuzel.com/rss.xml","feed_domains":["artuzel.com"]},

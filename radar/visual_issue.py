@@ -2,6 +2,7 @@
 
 import html
 import json
+import re
 import time
 
 
@@ -111,7 +112,11 @@ def credit_html(asset):
 def card_html(card):
     title = html.escape(card["title"])
     url = html.escape(card["url"], quote=True)
-    text = f'{html.escape(card["section"])}\n<b><a href="{url}">{title}</a></b>'
+    title = title if card.get("article") else f'<a href="{url}">{title}</a>'
+    text = html.escape(card["section"])
+    if card.get("artist"):
+        text += f'\n<b>{html.escape(card["artist"])}</b>'
+    text += f'\n<b>{title}</b>'
     if card["summary"]:
         text += f'\n{html.escape(card["summary"])}'
     if card["byline"]:
@@ -119,55 +124,103 @@ def card_html(card):
     return text
 
 
+def mosaic_rows(figures):
+    """Leave extreme and markedly different proportions in separate full-width blocks."""
+    rows = []
+    for figure in figures:
+        asset = figure[1]
+        group = not asset.get("video") and .59 <= asset.get("aspect", 1.0) <= 2.05
+        if group and rows and rows[-1][0] and len(rows[-1][1]) < 5:
+            rows[-1][1].append(figure)
+        else:
+            rows.append((group, [figure]))
+    for _, row in rows:
+        if len(row) in {3, 4} and sum(asset.get("aspect", 1) < .85 for _, asset in row) == 1:
+            row.sort(key=lambda figure: figure[1].get("aspect", 1) >= .85)
+    return [row for _, row in rows]
+
+
 def rich_html(header, cards, photos):
     parts = [f'<p>{header.replace(chr(10), "<br/>")}</p>']
+    credits = []
     for index, (card, figures) in enumerate(zip(cards, photos)):
         if index:
             parts.append("<hr/>")
-        images = [f'<img src="tg://photo?id={identifier}"/>' for identifier, _ in figures]
-        if len(images) > 1:
-            credits = "<br/>".join(credit_html(asset) for _, asset in figures)
-            parts.append(f'<tg-slideshow>{"".join(images)}<figcaption>{credits}</figcaption></tg-slideshow>')
-        elif images:
-            parts.append(f'<figure>{images[0]}<figcaption>{credit_html(figures[0][1])}</figcaption></figure>')
-        parts.append(f'<p>{card_html(card).replace(chr(10), "<br/>")}</p>')
+        for row in mosaic_rows(figures):
+            images = "".join(f'<video src="tg://video?id={identifier}"></video>' if asset.get("video")
+                             else f'<img src="tg://photo?id={identifier}"/>' for identifier, asset in row)
+            parts.append(f'<tg-collage>{images}</tg-collage>' if len(row) > 1 else images)
+        for paragraph in card_html(card).split("\n\n"):
+            parts.append(f'<p>{paragraph.replace(chr(10), "<br/>")}</p>')
         url = html.escape(card["url"], quote=True)
         action = html.escape(card["action"])
-        parts.append(f'<tg-button-row align="left"><tg-button type="url" url="{url}">{action}</tg-button></tg-button-row>')
+        if card.get("article"):
+            parts.append(f'<p><a href="{url}">{action}</a></p>')
+        else:
+            parts.append(f'<tg-button-row align="left"><tg-button type="url" url="{url}">{action}</tg-button></tg-button-row>')
+        credits.extend(credit_html(asset) for _, asset in figures)
+    if credits:
+        links = "<br/>".join(dict.fromkeys(credits))
+        parts.append(f'<details><summary>Иллюстрации и лицензии</summary><p>{links}</p></details>')
     return "".join(parts)
 
 
 def classic_html(header, cards):
     body = []
     for card in cards:
-        images = "\n".join(credit_html(asset) for asset in card["images"])
+        credits = [*card["images"], *([card["video"]] if card.get("video") else [])]
+        images = "\n".join(credit_html(asset) for asset in credits)
         action = html.escape(card["action"])
         url = html.escape(card["url"], quote=True)
+        if card.get("article"):
+            sentences = re.split(r"(?<=[.!?])\s+", card["summary"])
+            paragraphs = []
+            for sentence in sentences:
+                if sum(len(value) + 1 for value in paragraphs) + len(sentence) > 540 and paragraphs:
+                    break
+                paragraphs.append(sentence)
+            card = {**card, "summary": " ".join(paragraphs)}
         body.append(f'{card_html(card)}\n<a href="{url}">{action}</a>' + (f"\n<i>{images}</i>" if images else ""))
     return header + "\n\n" + "\n\n────────\n\n".join(body)
 
 
 def gallery_preview(issue):
     header = issue["header"].replace("\n", "<br>")
-    cards = []
+    cards, credits = [], []
     for card in issue["cards"]:
-        images = "".join(f'<figure><img src="{html.escape(asset["url"], quote=True)}" alt="">'
-                         f'<figcaption>{credit_html(asset)}</figcaption></figure>' for asset in card["images"])
-        if not images:
-            images = ""
-        body = card_html(card).replace("\n", "<br>")
+        groups = []
+        movie = card.get("video")
+        if movie:
+            groups.append(f'<video controls preload="metadata" src="{html.escape(movie["url"], quote=True)}"></video>')
+            credits.append(credit_html(movie))
+        else:
+            for group in mosaic_rows(list(enumerate(card["images"]))):
+                figures = []
+                for _, asset in group:
+                    url = html.escape(asset["url"], quote=True)
+                    description = html.escape(asset["credit"], quote=True)
+                    figures.append(f'<a href="{url}" target="_blank" rel="noopener"><img src="{url}" alt="{description}"></a>')
+                    credits.append(credit_html(asset))
+                primary = " hero" if len(group) in {3, 4} and group[0][1].get("aspect", 1) < .85 else ""
+                groups.append(f'<div class="mosaic count-{len(group)}{primary}">{"".join(figures)}</div>')
+        body = "".join(f'<p>{text.replace(chr(10), "<br>")}</p>' for text in card_html(card).split("\n\n"))
         action = html.escape(card["action"])
         url = html.escape(card["url"], quote=True)
-        cards.append(f'<article>{images}<p>{body}</p><a class="action" href="{url}">{action}</a></article>')
+        style = "source" if card.get("article") else "action"
+        cards.append(f'<article>{"".join(groups)}{body}<a class="{style}" href="{url}">{action}</a></article>')
     page = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Визуальный Art Radar</title>
 <style>
 body{background:#f6f0e5;color:#252b26;font:16px/1.56 system-ui,sans-serif;margin:30px auto;padding:0 16px;max-width:650px}
 header{font-size:1.2em;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #953e2d}
-article{background:#fcf8f0;margin:0 0 20px;padding:14px;border:1px solid #dbd2c4;border-radius:5px}
-figure{margin:0 0 6px}img{display:block;max-width:100%;height:auto;margin:0 auto}
-figcaption,small{font-size:.75em;color:#5b5349}a{color:#803628;text-underline-offset:3px}
+article{margin:0 0 26px;padding:0 0 24px;border-bottom:1px solid #d4c6b7;overflow-wrap:anywhere}
+img,video{display:block;width:100%;height:auto;margin:auto}a{color:#803628;text-underline-offset:3px}
+.mosaic{display:grid;align-items:center;gap:4px;margin:0 0 12px;grid-template-columns:1fr}
+.count-2,.count-4,.count-5{grid-template-columns:repeat(2,minmax(0,1fr))}.count-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.count-5{grid-template-columns:repeat(6,minmax(0,1fr))}.count-5 a{grid-column:span 2}.count-5 a:nth-child(n+4){grid-column:span 3}
+.hero{grid-template-columns:1.65fr 1fr}.hero a:first-child{grid-row:span 2}.count-4.hero a:first-child{grid-row:span 3}
 .action{display:inline-block;padding:5px 12px;border:1px solid currentColor;border-radius:5px}
-i{color:#5b5349;font-size:.88em}p{margin:8px 0}
+i,.source,details{color:#5b5349;font-size:.88em}p{margin:10px 0}summary{cursor:pointer}
 </style></head><body>"""
-    return page + f"<header>{header}</header>" + "".join(cards) + "</body></html>\n"
+    references = "<details><summary>Иллюстрации и лицензии</summary><p>" + "<br>".join(credits) + "</p></details>" if credits else ""
+    return page + f"<header>{header}</header>" + "".join(cards) + references + "</body></html>\n"

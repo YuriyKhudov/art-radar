@@ -1,5 +1,31 @@
 [
   {
+    "source": "revoy",
+    "url": "https://www.peppercarrot.com/en/miniFantasyTheater/079.html#bonus",
+    "reviewed": true,
+    "title": "Давид Ревуа: таймлапс рисунка для MiniFantasyTheater",
+    "summary": "В таймлапсе Давид Ревуа показывает, как в Krita собирает страницу комикса: от черновых линий до цветной сцены с домиком в лесу.",
+    "why": "Авторское видео без речи, опубликованное вместе с новым выпуском комикса.",
+    "published": "2026-11-18T00:00:00+01:00",
+    "provenance": "Страница автора и оригинальный MP4 · дата публикации 18 ноября 2026",
+    "rubric": "В мастерской",
+    "direction": "studio",
+    "type": "news",
+    "topics": [
+      "studio",
+      "techniques"
+    ],
+    "kind": "video",
+    "lang": "en",
+    "translation": "none",
+    "verified_visual": true,
+    "access": "free",
+    "usefulness": 4.8,
+    "originality": 4.9,
+    "duration": "0:44",
+    "seconds": 44
+  },
+  {
     "source":"arzamas","url":"https://arzamas.academy/mag/487-serov","reviewed":true,
     "title":"Как Серов добивался ощущения живого портрета",
     "summary":"Галина Ельшевская разбирает пять портретов. У Веры Мамонтовой важны открытые светлые мазки, у Иды Рубинштейн — линия и силуэт.",
