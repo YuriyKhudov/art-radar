@@ -6,7 +6,7 @@ on:
       mode:
         description: Предпросмотр, диагностика API, личный тест или сверка с Telegram
         type: choice
-        options: [preview, check_platforms, private_test, prepare_group, confirmed, absent]
+        options: [preview, automatic_preview, check_platforms, private_test, prepare_group, confirmed, absent]
         default: preview
       issue:
         description: Номер выпуска для сверки
@@ -48,16 +48,16 @@ permissions:
 
 jobs:
   preview:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'preview'
+    if: github.event_name == 'workflow_dispatch' && (inputs.mode == 'preview' || inputs.mode == 'automatic_preview')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ inputs.mode == 'automatic_preview' && 40 || 15 }}
     permissions:
       actions: read
       contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
-        if: vars.ART_RADAR_JOURNAL_SCHEDULED == '1'
+        if: inputs.mode == 'preview' && vars.ART_RADAR_JOURNAL_SCHEDULED == '1'
         with:
           ref: art-radar-journal-state
           path: journal-state
@@ -94,6 +94,7 @@ jobs:
       - name: Собрать выпуск для просмотра
         if: inputs.preview_run_id == ''
         env:
+          MODE: ${{ inputs.mode }}
           EXCLUDE_RUN_ID: ${{ inputs.exclude_run_id }}
           ILLUSTRATED: ${{ inputs.illustrated }}
           PREVIEW_URLS: ${{ inputs.preview_urls }}
@@ -104,12 +105,14 @@ jobs:
         run: |
           set -eu
           args=()
+          if [[ "$MODE" == automatic_preview ]]; then args+=(--automatic-issues 3); fi
           if [[ -n "$EXCLUDE_RUN_ID" ]]; then args+=(--exclude-audit excluded-preview/audit.json); fi
           if [[ "$ILLUSTRATED" == true ]]; then args+=(--illustrated); fi
           read -r -a preview_urls <<< "$PREVIEW_URLS"
           for url in "${preview_urls[@]}"; do args+=(--only-url "$url"); done
           python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh "${args[@]}"
       - uses: actions/upload-artifact@v4
+        if: ${{ success() || failure() }}
         with:
           name: art-radar-journal-preview
           path: journal-preview/

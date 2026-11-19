@@ -85,8 +85,8 @@ DEFAULT_FORMAT = "rich"
 
 def make_plan(issue, variant):
     cards = issue["cards"]
-    if not 3 <= len(cards) <= 4:
-        raise ValueError("В визуальном выпуске требуется от трёх до четырёх карточек.")
+    if not 2 <= len(cards) <= 4:
+        raise ValueError("В визуальном выпуске требуется от двух до четырёх карточек.")
     header = issue["header"]
     if variant in {"rich", "classic"}:
         return [{"kind": variant, "header": header, "cards": cards}]

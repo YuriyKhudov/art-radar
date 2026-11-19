@@ -3,10 +3,10 @@
 import re
 from urllib.parse import urljoin
 
-from radar import artist_pages, editorial, editorial_sources as sources, journal_articles
+from radar import artist_pages, editorial, editorial_sources as sources, journal_articles, journal_illustrations
 
 
-POLICY = 1
+POLICY = 2
 ROLES = {
     "architecture": ("architecture", "venue", "artwork", "exhibition_view"),
     "photography": ("art_photograph",),
@@ -41,6 +41,15 @@ OPEN_LICENSES = {"https://creativecommons.org/licenses/by/4.0": "CC BY 4.0",
                  "https://creativecommons.org/licenses/by-sa/4.0": "CC BY-SA 4.0",
                  "https://creativecommons.org/publicdomain/zero/1.0": "CC0",
                  "https://creativecommons.org/publicdomain/mark/1.0": "Public Domain"}
+
+
+def video_permalink(url):
+    try:
+        url = sources.canonical(url)
+    except ValueError:
+        return False
+    return bool(re.fullmatch(r"https://(?:youtube\.com/watch\?v=[\w-]{11}|rutube\.ru/video/[a-f0-9]{32}|"
+                             r"(?:vkvideo\.ru|vk\.com)/video-?\d+_\d+)(?:[?&].*)?", url, re.ASCII))
 
 
 def subject(card, custom):
@@ -171,6 +180,8 @@ class VisualChecks:
         catalogue = editorial.visual_assets(card.item, self.config, all_candidates=True)
         candidates = [asset for asset in catalogue if role_for(asset, topic)]
         checked = self.verify_images(candidates, topic)
+        search_log = []
+        page = None
         permitted = self.config.get("article_domains", [])
         origin = [domain for domain in card.source["domains"] if domain in permitted]
         # The original source can also supply approved image metadata through JSON-LD.
@@ -193,6 +204,11 @@ class VisualChecks:
                 for digest, asset in self.verify_images(fresh, topic).items():
                     checked.setdefault(digest, asset)
                 candidates.extend(fresh)
+        if not self.offline and not is_video and self.config.get("extended_illustrations") and not enough:
+            found, search_log = journal_illustrations.search(card, topic, page, self.config, self.pages, self.robots)
+            for digest, asset in self.verify_images(found, topic).items():
+                checked.setdefault(digest, asset)
+            candidates.extend(found)
         roles = ROLES[topic]
         ranked = sorted(checked.values(), key=lambda asset: roles.index(asset["role"]))
         if topic == "technique" and not is_video and not any(asset["role"] == "technique_steps" for asset in ranked):
@@ -201,11 +217,14 @@ class VisualChecks:
                 first.setdefault(asset["role"], asset)
             ranked = [*first.values(), *(asset for asset in ranked if asset not in first.values())]
         images = ranked[:1 if is_video else 5]
-        review = {"subject": topic, "images": images, "video": None, "candidates": len(candidates), "quality": 0}
+        review = {"subject": topic, "images": images, "video": None, "candidates": len(candidates), "quality": 0,
+                  "search": search_log}
+        if not images and is_video and self.config.get("video_link_fallback") and video_permalink(card.item["url"]):
+            return {**review, "video_link": True}
         if not images:
             review["reason"] = ("Иллюстрация не прошла проверку прав, файла или разрешения" if candidates else
                                 "Нет подходящего изображения с подтверждёнными правами")
-        elif topic == "technique":
+        elif topic == "technique" and not is_video:
             evidence = {asset["role"] for asset in images}
             if "technique_steps" not in evidence and not {"creative_process", "technique_result"} <= evidence:
                 review["reason"] = "Для техники не подтверждены изображения процесса и результата"
@@ -215,9 +234,16 @@ class VisualChecks:
 
     def verify_images(self, candidates, topic):
         checked = {}
+        works = set()
         for asset in candidates[:12] if not self.offline else []:
+            role = role_for(asset, topic)
+            work = artist_pages.sources.clean(asset.get("work", "")).casefold()
+            if not role or work and work in works:
+                continue
             for validated, _ in self.photos([asset]):
                 short, long = sorted((validated["width"], validated["height"]))
                 if short >= 480 and long >= 700:
-                    checked.setdefault(validated["sha256"], {**validated, "role": role_for(asset, topic)})
+                    checked.setdefault(validated["sha256"], {**validated, "role": role})
+                    if work:
+                        works.add(work)
         return checked

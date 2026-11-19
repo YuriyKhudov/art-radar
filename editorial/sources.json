@@ -12,6 +12,10 @@
   "theme_every": 0,
   "previously_published": [],
   "visual_selection": true,
+  "extended_illustrations": true,
+  "video_link_fallback": true,
+  "accumulate_reserve": true,
+  "illustration_archive_domains": ["artic.edu", "metmuseum.org", "clevelandart.org", "peppercarrot.com", "rusmuseum.ru"],
   "article_domains": [
     "arzamas.academy",
     "lavrus.tretyakov.ru",
@@ -110,7 +114,7 @@
     ],
     "visual_comparison_sources": {"jacksons": "artist-jacksons"},
     "native_video_domains": ["peppercarrot.com"],
-    "visual_image_domains": ["thumb.wikimedia.org"],
+    "visual_image_domains": ["thumb.wikimedia.org", "artic.edu"],
     "visual_images": {
       "https://arzamas.academy/mag/487-serov": [
         {
@@ -385,7 +389,7 @@
     {"id":"dari-vk","publisher":"dari","name":"Дари Арт · VK Видео","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","owner":-72292077,"topics":["studio","colour","techniques"]},
     {"id":"rizhkin-vk","publisher":"rizhkin","name":"Александр Рыжкин · VK Видео","lang":"ru","priority":4.6,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","screen_name":"rizhkin","topics":["portrait","techniques"]},
     {"id":"fler-vk","publisher":"fler","name":"Александра Малыгина · VK Видео","lang":"ru","priority":4.4,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","screen_name":"flers_art","topics":["studio","techniques"]},
-    {"id":"arzamas","name":"Arzamas","lang":"ru","priority":5,"enabled":true,"domains":["arzamas.academy"]},
+    {"id":"arzamas","name":"Arzamas","lang":"ru","priority":5,"enabled":true,"domains":["arzamas.academy"],"archive_indexes":["https://arzamas.academy/themes/masterpiece","https://arzamas.academy/themes/painting","https://arzamas.academy/themes/painting?page=12","https://arzamas.academy/themes/gallery?type=Material"]},
     {"id":"lavrus","publisher":"tretyakov","name":"Лаврус · Третьяковская галерея","lang":"ru","priority":5,"enabled":true,"domains":["lavrus.tretyakov.ru"]},
     {"id":"culture","name":"Культура.РФ","lang":"ru","priority":4.7,"enabled":true,"domains":["culture.ru","ar.culture.ru"]},
     {"id":"rusmuseum","name":"Русский музей","lang":"ru","priority":5,"enabled":true,"domains":["rusmuseum.ru","virtual.rusmuseumvrm.ru","rusmuseumvrm.ru","app.rusmuseum.ru"]},

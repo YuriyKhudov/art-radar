@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Protocol
 
-from radar import artist_radar, editorial_sources as sources
+from radar import artist_radar, editorial_sources as sources, journal_reserve
 
 SITE = "https://yuriykhudov.github.io/art-radar/"
 MOSCOW = dt.timezone(dt.timedelta(hours=3))
@@ -88,7 +88,7 @@ class Candidate:
 
     @property
     def fresh(self):
-        return self.direction != "archive" and self.age is not None
+        return self.direction != "archive" and self.age is not None and not self.item.get("from_reserve")
 
     @property
     def russian(self):
@@ -105,6 +105,7 @@ class Candidate:
                 "direction": self.direction, "kind": self.item["kind"], "age": self.age,
                 "provenance": self.item.get("provenance", "картотека"),
                 "artist_radar": self.item.get("artist_radar"), "search_matches": self.item.get("search_matches", []),
+                "reserve_bucket": self.item.get("reserve_bucket"), "from_reserve": bool(self.item.get("from_reserve")),
                 "score": self.score, "ratings": self.metrics, "decision": decision,
                 "reason": self.item["why"]}
 
@@ -165,6 +166,8 @@ class RulesEditor:
                 title, re.I):
             return None, "Срок подачи и условия не подтверждены"
         direction, signals = self.classify({**raw, "title": title}, source, text)
+        if raw.get("archive_index") and source.get("archive_indexes"):
+            direction, signals = "archive", "Материал в образовательном архиве издания."
         if not direction:
             return None, "Не найдена подходящая рубрика"
         words_available = 25
@@ -194,7 +197,8 @@ class RulesEditor:
         return {**raw, "title": shorten(display_title, 126), "original_title": raw["title"], "summary": f"«{shortened}{punctuation}»",
                 "why": f"Рубрика «{DIRECTIONS[direction][2:]}» по описанию источника. {signals}",
                 "direction": direction, "rubric": DIRECTIONS[direction], "lang": "ru", "access": access,
-                "type": "news", "topics": source.get("topics", []), "usefulness": relevance[direction],
+                "type": "archive" if raw.get("archive_index") else "news",
+                "topics": source.get("topics", []), "usefulness": relevance[direction],
                 "originality": min(4.7, 3.7 + len(words(evidence) - words(title)) / 27)}, ""
 
     @staticmethod
@@ -263,9 +267,20 @@ def assess(items, config, now, history=(), provider=None):
         if item:
             published = dt.datetime.fromisoformat(item["published"]) if item.get("published") else None
             day_age = (today - published.astimezone(MOSCOW).date()).days if published else None
+            outside = day_age is None or day_age > config["news_days"]
+            expires = item.get("reserve_expires")
+            if config.get("accumulate_reserve") and not expires and outside:
+                window = journal_reserve.expiry(item, today, config["news_days"])
+                if window and window[0] not in {"news", "event"} and (day_age is not None or item.get("archive_index")):
+                    item = {**item, "reserve_bucket": window[0], "reserve_expires": window[1].isoformat()}
+                    expires = item["reserve_expires"]
+            in_reserve = bool(expires and dt.date.fromisoformat(expires) >= today
+                              and (item["direction"] != "news" or item.get("reserve_bucket") == "event"))
             if published and published > now:
                 reason = "Дата публикации ещё не наступила"
-            elif item["type"] == "news" and (day_age is None or day_age > config["news_days"]):
+            elif item.get("event_end") and dt.date.fromisoformat(item["event_end"][:10]) < today:
+                reason = "Выставка или событие завершились"
+            elif item["type"] == "news" and outside and not in_reserve:
                 reason = "Материал вне семидневного окна или без даты"
             elif item.get("deadline") and dt.date.fromisoformat(item["deadline"]) < today:
                 reason = "Срок подачи истёк"
@@ -281,6 +296,8 @@ def assess(items, config, now, history=(), provider=None):
                 reason = "Ролик без хронометража не подтверждён авторским каналом"
             elif item["access"] == "paid":
                 reason = "Платный доступ"
+            if outside and in_reserve:
+                item["from_reserve"] = True
         if reason:
             report.append({"url": raw["url"], "title": raw["title"], "source": raw["source"], "decision": reason,
                            "published": raw.get("published"), "artist_radar": raw.get("artist_radar"),
@@ -305,7 +322,7 @@ def assess(items, config, now, history=(), provider=None):
     return sorted(candidates, key=lambda item: (-item.score, item.key)), report
 
 
-def select(candidates, config, theme=None, verify=None, history=(), now=None):
+def select(candidates, config, theme=None, verify=None, history=(), now=None, reserve=False, visual=False):
     picked, rejected = [], {}
     rubrics, providers, month_rubrics, month_providers = Counter(), Counter(), Counter(), Counter()
     month_streams, streams = Counter(), Counter()
@@ -334,8 +351,9 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None):
                 continue
             if not theme and rubrics[rubric] >= 2:
                 continue
-            if not theme and rubric == "archive" and (rubrics["archive"] or candidate.score < config["archive_score"]
-                                                       or position < config["min_items"] - 1):
+            archive_floor = config["extra_score"] if reserve and candidate.item.get("archive_index") else config["archive_score"]
+            if not theme and rubric == "archive" and (rubrics["archive"] or candidate.score < archive_floor
+                                                       or (position < config["min_items"] - 1 and not reserve)):
                 continue
             if position >= config["min_items"] and candidate.score < config["extra_score"]:
                 continue
@@ -365,6 +383,11 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None):
                     and card.fresh and card.score >= config["extra_score"]):
                 stream_balance += 12
             visual = (card.item.get("journal_visual") or {}).get("quality", 0)
+            needs_picture = position > 0 and not any((p.item.get("journal_visual") or {}).get("images")
+                                                     or (p.item.get("journal_visual") or {}).get("video") for p in picked)
+            media = card.item.get("journal_visual") or {}
+            if needs_picture and (media.get("images") or media.get("video")):
+                visual += 18
             rating = (card.score + visual + balance + boost + freshness - 8 * rubrics[card.direction]
                       - min(24, 7 * month_providers[card.publisher])
                       + (3 if card.russian == russian_needed else 0) + artist_boost + style_boost + stream_balance)
@@ -383,8 +406,12 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None):
             break
         else:
             break
-    if (len(picked) < config["min_items"] or not any(p.russian for p in picked) or not any(p.non_us for p in picked)
-            or not theme and (len(rubrics) < 2 or not any(p.fresh for p in picked))):
+    short_issue = reserve and len(picked) == 2 and all(p.score >= config["extra_score"] for p in picked)
+    has_media = any((p.item.get("journal_visual") or {}).get("images")
+                    or (p.item.get("journal_visual") or {}).get("video") for p in picked)
+    if ((len(picked) < config["min_items"] and not short_issue) or not any(p.russian for p in picked)
+            or not any(p.non_us for p in picked) or visual and not has_media
+            or not theme and (len(rubrics) < 2 or not reserve and not any(p.fresh for p in picked))):
         picked = []
     report = [candidate.audit("Выбран в выпуск" if candidate in picked else rejected.get(candidate.key) or
                               ("Другая тема" if theme and theme not in candidate.item.get("topics", []) else
@@ -395,6 +422,8 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None):
             relevance = []
             if candidate.direction == "archive":
                 relevance.append("Архивная находка с редакционной отметкой")
+            elif candidate.item.get("from_reserve"):
+                relevance.append("Материал из накопительного резерва")
             elif candidate.age is not None:
                 relevance.append("Публикация за последние три дня" if candidate.age <= 3 else
                                  "Публикация в семидневном окне")
@@ -453,6 +482,8 @@ def display_card(candidate, config, url_check):
         heading = "🔎 Художник в поле зрения"
     elif info.get("stream") == "priority" and candidate.direction == "practice":
         heading = artist_radar.HEADINGS["technique"]
+    if item.get("from_reserve") and candidate.direction != "archive":
+        heading += " · Из резерва"
     label = "Читать статью"
     duration = ""
     if item["kind"] == "video":
@@ -529,6 +560,7 @@ def render_visual(picked, config, theme, now):
                        "action": "Читать оригинал" if article else card["action"],
                        "url": article["url"] if article else item["url"],
                        "images": checked["images"] if checked else visual_assets(item, config),
+                       "video_link": bool(checked and checked.get("video_link")),
                        "video": checked["video"] if checked else custom.get("native_video") if item["kind"] == "video" else None})
     return {"header": "\n".join(header), "cards": output}
 

@@ -109,6 +109,8 @@ def page_item(page, source, url):
     evidence = sources.clean(node.get("description") or page.meta.get("og:description") or page.meta.get("description"))
     published = named_date(node.get("datePublished") or page.meta.get("article:published_time"))
     events = {n["startDate"] for n in records(page.structure) if isinstance(n.get("startDate"), str)}
+    ends = {named_date(n.get("endDate")) for n in records(page.structure)
+            if n.get("@type") in ("Event", "ExhibitionEvent")}
     if source.get("event_index"):
         events.update(date for date in page.dates if named_date(date))
     artwork = [n.get("name") for n in records(page.structure) if n.get("@type") == "VisualArtwork"]
@@ -119,7 +121,8 @@ def page_item(page, source, url):
         return None, seen
     item = sources.entry(source, title=title, url=url, text=evidence, date=published, key=seen["id"],
                          kind="article", origin=f"Публичные метаданные · {source['url']}",
-                         extra={"language": source["lang"], "monitor_child": url != source["url"]})
+                         extra={"language": source["lang"], "monitor_child": url != source["url"],
+                                "event_end": max(ends - {None}, default=None)})
     return item, seen
 
 
