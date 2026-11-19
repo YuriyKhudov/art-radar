@@ -11,6 +11,41 @@
   "max_items": 4,
   "theme_every": 0,
   "previously_published": [],
+  "presentation": {
+    "names": {
+      "Sylvain Lefebvre": "Сильвен Лефевр",
+      "Bill Anton": "Билл Антон",
+      "Kelly Sinnapah Mary": "Келли Синнапа Мэри",
+      "Roy Eastland": "Рой Истленд",
+      "Stelios Pupet": "Стелиос Пупет",
+      "Collins Obijiaku": "Коллинз Обиджиаку",
+      "Henry Ward": "Генри Уорд",
+      "José de Jesús Rodríguez": "Хосе де Хесус Родригес",
+      "Cathy Diamond": "Кэти Даймонд",
+      "Kathleen Dunn Jacobs": "Кэтлин Данн Джейкобс"
+    },
+    "cards": {
+      "https://youtube.com/watch?v=Lt4pX0ZhjsQ": {
+        "title": "Вячеслав Короленков о колорите серого пейзажа",
+        "summary": "Художник пишет картину и разбирает, как связать крупные цветовые и тональные пятна.",
+        "credit": "Вячеслав Короленков"
+      },
+      "https://rutube.ru/video/be0461c53e9cb4bdfc8e56274507f39c": {
+        "title": "Артур Мирзоян. Из кино в живопись",
+        "summary": "Художник-постановщик «Вия 3D» рассказывает, что из работы в кино перенёс в живопись.",
+        "credit": "Красная мастерская"
+      },
+      "https://thisiscolossal.com/2026/11/sylvain-lefebvre-oil-paintings-marbled-paper": {
+        "title": "Сильвен Лефевр. Путешествие в невидимый лес",
+        "summary": "В сказочных лесах Лефевра тонкие слои масла ложатся поверх коллажа из бумаги с ручным мраморным рисунком."
+      },
+      "https://rutube.ru/video/854c2f97c02484226bf75c38e4088e61": {
+        "title": "Керамика на выставке «Осень 2026»",
+        "summary": "Среди участников выставки — петербургские керамисты Лев Солодков и Тарас Пышта.",
+        "credit": "Союз художников СПб"
+      }
+    }
+  },
   "monthly_mix": {"studio": 0.30, "practice": 0.25, "news": 0.20, "people": 0.15, "archive": 0.10},
   "cover_exclusions": ["cleveland"],
   "image_domains": ["images.metmuseum.org", "openaccess-cdn.clevelandart.org"],

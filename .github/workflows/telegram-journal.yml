@@ -15,7 +15,7 @@ on:
         description: Номер сообщения в теме Telegram при подтверждении
         type: string
       preview_run_id:
-        description: Номер успешного запуска preview для личной тестовой отправки
+        description: Номер успешного запуска preview для повторного оформления или личной отправки
         type: string
   schedule:
     - cron: "0,30 * * * *"
@@ -28,6 +28,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'preview'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -39,9 +42,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Установить средство подготовки обложки
+        run: python -m pip install "Pillow==12.3.0"
+      - uses: actions/download-artifact@v4
+        if: inputs.preview_run_id != ''
+        with:
+          name: art-radar-journal-preview
+          run-id: ${{ inputs.preview_run_id }}
+          github-token: ${{ github.token }}
+          path: previous-preview
+      - name: Оформить выпуск из сохранённого отбора
+        if: inputs.preview_run_id != ''
+        run: >-
+          python -m radar.telegram_journal preview
+          --snapshot previous-preview/harvest.json --selection previous-preview/selection.json
       - name: Собрать выпуск для просмотра
+        if: inputs.preview_run_id == ''
         env:
-          ART_RADAR_JOURNAL_COLLAGE: ${{ vars.ART_RADAR_JOURNAL_COLLAGE }}
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
           JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
         run: python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh
@@ -118,9 +135,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Установить средства для коллажа
-        if: vars.ART_RADAR_JOURNAL_COLLAGE == '1'
-        run: python -m pip install Pillow
       - name: Отправить единственный выпуск в подтверждённый личный чат
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -153,13 +167,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Установить средства для коллажа
-        if: github.event_name == 'schedule' && vars.ART_RADAR_JOURNAL_COLLAGE == '1'
-        run: python -m pip install Pillow
+      - name: Установить средство подготовки обложки
+        if: github.event_name == 'schedule'
+        run: python -m pip install "Pillow==12.3.0"
       - name: Сбор и проверка срока выпуска
         if: github.event_name == 'schedule'
         env:
-          ART_RADAR_JOURNAL_COLLAGE: ${{ vars.ART_RADAR_JOURNAL_COLLAGE }}
           ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
           ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}

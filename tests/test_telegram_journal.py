@@ -1,4 +1,5 @@
 import datetime as dt
+import hashlib
 import io
 import sqlite3
 import tempfile
@@ -8,7 +9,7 @@ from contextlib import closing, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from radar import editorial, editorial_sources as sources, telegram_journal as journal
+from radar import editorial, editorial_sources as sources, journal_cover, telegram_journal as journal
 
 NOW = dt.datetime(2026, 11, 18, 19, tzinfo=journal.MOSCOW)
 CONFIG = sources.read(sources.ROOT / "sources.json")
@@ -42,11 +43,50 @@ class EditorialTest(unittest.TestCase):
         self.assertEqual(len(picked), 4)
         self.assertEqual(len({card.publisher for card in picked}), 4)
         self.assertEqual({card.direction for card in picked}, {"studio", "practice", "news", "people"})
-        self.assertIn("18.11.2026", issue["html"])
-        self.assertIn("9:00", issue["html"])
+        self.assertIn("<b>Art Radar · 18 ноября 2026</b>", issue["html"])
+        self.assertIn(editorial.SLOGAN, issue["html"])
+        self.assertIn("<b>Как писать небо маслом</b>", issue["html"])
+        self.assertIn(">Смотреть видео</a> · 9:00", issue["html"])
+        self.assertIn(">Читать статью</a>", issue["html"])
         self.assertNotIn("Попробуйте", issue["html"])
-        self.assertLess(editorial.length(issue["html"]), 4096)
+        self.assertLessEqual(editorial.length(issue["html"]), editorial.PHOTO_CAPTION_LIMIT)
+        self.assertEqual(len(issue["cover"]["tiles"]), 4)
+        self.assertNotIn("url", issue["cover"])
         self.assertFalse(journal.prepare(ARCHIVE, CONFIG, [], NOW, None, 1, verify=False)[0])
+
+    def test_presentation_leads_with_qualified_artist_and_ignores_truncated_excerpt(self):
+        from dataclasses import replace
+
+        picked, _ = editorial.assess(fresh(), CONFIG, NOW)
+        original = picked[-1]
+        info = {"stream": "priority", "artist": "Пример художника", "feature": "works"}
+        featured = replace(original, item={**original.item, "artist_radar": info,
+                                           "summary": "«Художник рассказывает о подробностях своей…»",
+                                           "evidence": "Зрители обсуждают графическую серию и технику сухой иглы. Дальше в записи"},
+                           score=90)
+        text, cover = editorial.render([*picked[:-1], featured], CONFIG, now=NOW)
+        self.assertEqual(cover["tiles"][0]["title"], featured.item["title"])
+        self.assertIn("Зрители обсуждают графическую серию и технику сухой иглы.", text)
+        self.assertNotIn("подробностях своей", text)
+        self.assertNotIn("Дальше в записи", text)
+
+    def test_cover_uses_only_licensed_originals(self):
+        from PIL import Image
+
+        body = io.BytesIO()
+        Image.new("RGB", (20, 10), "#cccccc").save(body, "JPEG")
+        licensed = {"url": "https://images.metmuseum.org/test.jpg", "license": "CC0", "credit": "Метрополитен-музей"}
+        unlicensed = {**licensed, "license": "All rights reserved"}
+        cover = {"date": "18 ноября 2026", "tiles": [
+            {"section": "Искусство", "title": "Работы художника", "image": licensed},
+            {"section": "Видео", "title": "Творческий процесс", "image": unlicensed}]}
+        with patch.object(sources, "request", return_value=(body.getvalue(), "image/jpeg")) as request:
+            picture, originals = journal_cover.compose(cover)
+        request.assert_called_once()
+        self.assertEqual(originals, 1)
+        with Image.open(io.BytesIO(picture)) as composed:
+            self.assertEqual(composed.format, "JPEG")
+            self.assertEqual(composed.width, 1080)
 
     def test_recency_boundary_and_marketing(self):
         raw = fresh()
@@ -326,6 +366,26 @@ class JournalTest(unittest.TestCase):
                 journal.test_delivery(payload, self.path, Mock())
             self.assertTrue(wire.call_args.args[0].full_url.endswith("/getChat"))
             self.assertFalse(self.path.exists())
+
+    def test_private_delivery_requires_the_same_cover_bytes_as_preview(self):
+        preview = self.path.parent / "cover-1.jpg"
+        preview.write_bytes(b"changed")
+        attachment = {"file": preview.name, "sha256": hashlib.sha256(b"original").hexdigest()}
+        audit = {"verified_links": True, "issues": [{"html": "<b>Тест</b>",
+                 "cover": {"tiles": [{"title": "Выпуск"}], "attachment": attachment}}]}
+        with patch.object(journal, "confirmed_test_chat", return_value=("token", "42")) as chat:
+            with self.assertRaisesRegex(ValueError, "отличается"):
+                journal.test_delivery(audit, self.path, Mock(), preview.parent)
+            chat.assert_not_called()
+            preview.write_bytes(b"original")
+            with patch.object(journal.urllib.request, "urlopen",
+                              return_value=io.BytesIO(b'{"ok":true,"result":{"message_id":42}}')) as wire:
+                journal.test_delivery(audit, self.path, Mock(), preview.parent)
+            request = wire.call_args.args[0]
+            self.assertTrue(request.full_url.endswith("/sendPhoto"))
+            self.assertIn(b"original", request.data)
+            self.assertIn(b'name="caption"', request.data)
+            self.assertNotIn(b"link_preview_options", request.data)
 
     def test_explicit_rejection_releases_reservation_without_resend_that_day(self):
         error = urllib.error.HTTPError("https://api.telegram.org", 429, "Too Many Requests", {},

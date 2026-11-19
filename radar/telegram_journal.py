@@ -21,7 +21,7 @@ from contextlib import closing
 from http.client import HTTPException
 from pathlib import Path
 
-from radar import artist_pages, artist_radar, editorial, editorial_sources as sources
+from radar import artist_pages, artist_radar, editorial, editorial_sources as sources, journal_cover
 
 MOSCOW = dt.timezone(dt.timedelta(hours=3), "MSK")
 DEFAULT_DB = sources.ROOT.parent / "data" / "journal.sqlite3"
@@ -280,7 +280,7 @@ def prepare(pool, config, history, now, theme, sequence, verify):
     picked, audit = editorial.select(cards, config, theme, validate if verify else None, history, now)
     if not picked:
         return picked, {"theme": theme, "items": excluded + audit}
-    text, image = editorial.render(picked, config, theme, sequence, url_check, now)
+    text, image = editorial.render(picked, config, theme, url_check=url_check, now=now)
     return picked, {"theme": theme, "html": text, "cover": image, "items": excluded + audit}
 
 
@@ -297,7 +297,8 @@ def batch_verifier(pool, config):
             urls.add((item["alternative"], tuple(item.get("alternative_domains", [])), False))
         if item.get("player"):
             urls.add((item["player"], tuple(config["player_domains"]), False))
-        cover = sources.images(item, config)
+        custom = config.get("presentation", {}).get("cards", {}).get(sources.canonical(item["url"]), {})
+        cover = sources.images({**item, **custom}, config)
         if cover:
             urls.add((cover["url"], tuple(config["image_domains"]), True))
     requests = sorted(urls)
@@ -337,10 +338,6 @@ def save_preview(output, issues, report, day, verified, snapshot=None, replay=No
     discoveries = artist_radar.discoveries(
         [item for item in snapshot["items"] if item.get("fact_excerpt")], registry, per_source=4
     ) if snapshot and registry else []
-    (output / "audit.json").write_text(json.dumps({"date": day, "verified_links": verified,
-                                                 "snapshot_sha256": snapshot_hash, "diversity": diversity,
-                                                 "sources": report, "issues": issues, "discoveries": discoveries},
-                                                ensure_ascii=False, indent=2), encoding="utf-8")
     articles = []
     for index, issue in enumerate(issues, 1):
         if "html" not in issue:
@@ -348,7 +345,14 @@ def save_preview(output, issues, report, day, verified, snapshot=None, replay=No
             continue
         cover = issue["cover"]
         image = ""
-        if cover and cover.get("embed"):
+        if cover and cover.get("tiles"):
+            photo, originals = journal_cover.compose(cover)
+            name = f"cover-{index}.jpg"
+            (output / name).write_bytes(photo)
+            cover["attachment"] = {"file": name, "sha256": hashlib.sha256(photo).hexdigest(),
+                                   "original_images": originals}
+            image = f'<img class="issue-cover" src="{name}" alt="Обложка выпуска Art Radar">'
+        elif cover and cover.get("embed"):
             embed = html.escape(cover["embed"], quote=True)
             title = html.escape(cover["title"], quote=True)
             image = (f'<div class="player"><iframe src="{embed}" title="{title}" loading="lazy" '
@@ -380,12 +384,17 @@ article{border:1px solid #d7d0c4;border-radius:10px;overflow:hidden;margin:0 0 2
 .native{padding:24px clamp(16px,5vw,38px);background:#e7dfd1}.native a{font:1.25em Georgia,serif}
 .collage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;background:#d9d2c3}
 img{display:block;width:100%;max-height:420px;object-fit:contain;background:#d9d2c3}
+.issue-cover{max-height:none;background:#f6f0e5}
 .post{padding:8px clamp(16px,5vw,38px) 20px}.post p{margin:0;padding:14px 0;border-bottom:1px solid #e4dbcf}
 .post p:last-child{border-bottom:0}a{color:#8a341d;text-underline-offset:3px}
 i{color:#5b5245;font-size:.9em}
 </style></head><body><header><h1>Art Radar</h1>
 <a href="audit.html">Оценки и результаты сбора</a></header>"""
     (output / "index.html").write_text(page + "\n".join(articles) + "</body></html>\n", encoding="utf-8")
+    (output / "audit.json").write_text(json.dumps({"date": day, "verified_links": verified,
+                                                 "snapshot_sha256": snapshot_hash, "diversity": diversity,
+                                                 "sources": report, "issues": issues, "discoveries": discoveries},
+                                                ensure_ascii=False, indent=2), encoding="utf-8")
     save_audit(output, issues, report, verified, diversity, snapshot_hash, registry, discoveries)
     print(output / "index.html")
 
@@ -513,26 +522,29 @@ def collage_bytes(assets):
     return output.getvalue()
 
 
-def send(issue, token, chat, thread):
+def send(issue, token, chat, thread, photo=None):
     text, cover = issue["html"], issue["cover"]
     data = {"chat_id": chat, "parse_mode": "HTML"}
     if thread is not None:
         data["message_thread_id"] = thread
-    photo = None
-    if cover and cover.get("collage") and editorial.length(text) <= 1024:
+    fits_caption = editorial.length(text) <= editorial.PHOTO_CAPTION_LIMIT
+    if cover and cover.get("tiles") and fits_caption and photo is None:
+        photo, _ = journal_cover.compose(cover)
+    if cover and cover.get("collage") and fits_caption and photo is None:
         try:
             photo = collage_bytes(cover["collage"])
         except (ImportError, OSError, ValueError):
             pass
-    if photo:
+    if photo and fits_caption:
         method = "sendPhoto"
         data["caption"] = text
-    elif cover and not (cover.get("embed") or cover.get("native") or cover.get("collage")) and editorial.length(text) <= 1024:
+    elif cover and cover.get("url") and not (cover.get("embed") or cover.get("native") or cover.get("collage")) and fits_caption:
         method = "sendPhoto"
         data.update(photo=cover["url"], caption=text)
     else:
         method = "sendMessage"
-        preview = {"url": cover["url"], "prefer_large_media": True, "show_above_text": True} if cover else {
+        photo = None
+        preview = {"url": cover["url"], "prefer_large_media": True, "show_above_text": True} if cover and cover.get("url") else {
             "is_disabled": True}
         data.update(text=text, link_preview_options=encode(preview))
     if photo:
@@ -583,12 +595,23 @@ def confirmed_test_chat():
     raise ValueError("Telegram не подтвердил личный чат. Откройте личный диалог с Art Radar и нажмите «Запустить».")
 
 
-def test_delivery(audit, db, persist):
+def test_delivery(audit, db, persist, artifacts=None):
     issues = audit.get("issues", [])
     if len(issues) != 1 or not audit.get("verified_links") or not issues[0].get("html"):
         raise ValueError("Для теста нужен один готовый выпуск из предпросмотра с проверенными ссылками.")
-    token, chat = confirmed_test_chat()
     issue = {"html": issues[0]["html"], "cover": issues[0]["cover"]}
+    cover = issue["cover"]
+    photo = None
+    if cover and cover.get("tiles"):
+        attachment = cover.get("attachment", {})
+        path = artifacts / "cover-1.jpg" if artifacts else None
+        if (not path or attachment.get("file") != path.name or not path.is_file()
+                or path.stat().st_size > 10_000_000 or editorial.length(issue["html"]) > editorial.PHOTO_CAPTION_LIMIT):
+            raise ValueError("Для личного теста нужна проверенная обложка и подпись до 1024 символов.")
+        photo = path.read_bytes()
+        if hashlib.sha256(photo).hexdigest() != attachment.get("sha256"):
+            raise ValueError("Обложка отличается от проверенного предпросмотра.")
+    token, chat = confirmed_test_chat()
     identity = json.dumps(issue, ensure_ascii=False, sort_keys=True)
     key = hashlib.sha256((chat + "\n" + identity).encode()).hexdigest()
     db.parent.mkdir(parents=True, exist_ok=True)
@@ -602,7 +625,7 @@ def test_delivery(audit, db, persist):
                 raise ValueError("Этот выпуск уже был отправлен либо ожидает подтверждения в тестовом чате.")
         persist()
         try:
-            message_id = send(issue, token, chat, None)
+            message_id = send(issue, token, chat, None, photo=photo)
         except TelegramRejected:
             with connection:
                 connection.execute("DELETE FROM test_deliveries WHERE id=?", (key,))
@@ -717,7 +740,8 @@ def main():
         db = args.test_db.resolve()
         if db == args.db.resolve() or db == DEFAULT_DB.resolve():
             parser.error("История тестов хранится в отдельной базе")
-        test_delivery(sources.read(args.audit), db, lambda: checkpoint(db, TEST_STATE_BRANCH) if args.git_state else None)
+        test_delivery(sources.read(args.audit), db, lambda: checkpoint(db, TEST_STATE_BRANCH) if args.git_state else None,
+                      args.audit.parent)
         return
     if args.command == "preview" and args.selection and (not args.snapshot or args.offline or args.artist_search):
         parser.error("--selection требует --snapshot и использует сохранённые сетевые проверки")
@@ -728,8 +752,6 @@ def main():
     if args.command == "reconcile" and args.sent is not None and args.sent <= 0:
         parser.error("--sent требует положительного номера сообщения")
     config = artist_radar.configure(sources.read(sources.ROOT / "sources.json"))
-    if os.getenv("ART_RADAR_JOURNAL_COLLAGE") == "1":
-        config["collage"] = True
     if args.command == "check-platforms":
         check_platforms(config)
         return

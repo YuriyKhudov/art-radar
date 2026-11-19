@@ -59,7 +59,9 @@ MARKET = re.compile(r"аукцион|арт-рынок|рекордн[а-я]+ ц
 PRICE_RECORD = re.compile(r"рекорд[а-я]* (?:цен|стоимост|кандинск)|продан[а-я]* за "
                           r"(?:рекорд|\$|.{0,35}(?:доллар|миллион|млн))", re.I)
 STOP = set("новая новые новый новости рассказал рассказывает музей художник искусство выставка картин впервые открыл открывается открылась".split())
-ASSIGNMENT = re.compile(r"^(?:Попробуйте|Сравните|Проследите|Выберите|Понаблюдайте|Обратите внимание|Присмотритесь)\b", re.I)
+MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
+SLOGAN = "Искусство, которое стоит вашего внимания"
+PHOTO_CAPTION_LIMIT = 1024
 
 
 @dataclass(frozen=True)
@@ -411,83 +413,103 @@ def length(text):
     return len(html.unescape(re.sub(r"<[^>]+>", "", text)).encode("utf-16-le")) // 2
 
 
-def render(picked, config, theme=None, sequence=1, url_check=None, now=None):
-    themes = config["themes"]
-    lines = ["🎨 <b>Art Radar — самое интересное из мира искусства</b>"]
+def complete_sentences(text):
+    text = " ".join(text.split())
+    if text.startswith("«") and text.endswith("»"):
+        text = text[1:-1]
+    parts = re.findall(r'.+?[.!?][»”"]?(?=\s+[А-ЯЁA-Z«„"]|$)', text)
+    return [part.strip() for part in parts if not re.search(r'\.{3}|…', part)
+            and len(part.split()) >= 5 and not PITCH.search(part)]
+
+
+def summary_options(item, presentation):
+    preferred = complete_sentences(presentation.get("summary", item["summary"]))
+    evidence = complete_sentences(item.get("evidence", "")) if item["lang"] == "ru" else []
+    evidence = sorted((part for part in evidence if sources.CYRILLIC.search(part)
+                       and not re.match(r"предлагаем вашему вниманию|всем привет|друзья,", part, re.I)),
+                      key=lambda part: not bool(ART.search(part)))
+    return list(dict.fromkeys([" ".join(preferred[:2]), *preferred, *evidence]))
+
+
+def display_card(candidate, config, url_check):
+    item = candidate.item
+    info = item.get("artist_radar") or {}
+    layout = config.get("presentation", {})
+    custom = layout.get("cards", {}).get(candidate.key, {})
+    artist = info.get("artist", "")
+    russian = layout.get("names", {}).get(artist)
+    title = custom.get("title", item["title"])
+    if russian:
+        title = (title.replace(artist, russian) if not custom.get("title") else title)
+    credit = custom.get("credit") or candidate.source["name"].split(" · ", 1)[0]
+    source_line = f"<i>{html.escape(credit)}</i>" if credit.casefold() not in title.casefold() else ""
+    if russian:
+        source_line += (" · " if source_line else "") + f"<i>{html.escape(artist)}</i>"
+    heading = DIRECTIONS[candidate.direction]
+    if info.get("stream") == "discovery":
+        heading = "🔎 Художник в поле зрения"
+    elif info.get("stream") == "priority" and candidate.direction == "practice":
+        heading = artist_radar.HEADINGS["technique"]
+    label = "Читать статью"
+    duration = ""
+    if item["kind"] == "video":
+        label = "Смотреть видео"
+        duration = f" · {html.escape(item['duration'])}" if item.get("duration") else ""
+    elif info.get("feature") == "works":
+        label = "Посмотреть работы"
+    image = sources.images({**item, **custom}, config)
+    if image and (candidate.publisher in config.get("cover_exclusions", []) or
+                  url_check and not url_check(image["url"], config["image_domains"], image=True)):
+        image = None
+    footer = f"{link(label, item['url'])}{duration}"
+    if source_line:
+        footer += " · " + source_line
+    return {"heading": heading, "title": title, "footer": footer,
+            "summaries": summary_options(item, custom), "image": image}
+
+
+def render(picked, config, theme=None, url_check=None, now=None):
+    date = (now or dt.datetime.now(MOSCOW)).astimezone(MOSCOW).date()
+    date_text = f"{date.day} {MONTHS[date.month - 1]} {date.year}"
+    header = [f"<b>Art Radar · {date_text}</b>", f"<i>{SLOGAN}</i>"]
     if theme:
-        lines.extend([f"<b>{html.escape(themes[theme]['title'])}</b>", "", html.escape(themes[theme]["intro"])])
-    images, previews = [], []
-    for candidate in picked:
-        item = candidate.item
-        heading = DIRECTIONS[candidate.direction]
-        info = item.get("artist_radar") or {}
-        if info.get("artist"):
-            heading = ("🔎 Художник в поле зрения" if info["stream"] == "discovery" else
-                       "🎨 Художник в поле зрения" if info.get("historical") and info["feature"] == "works" else
-                       artist_radar.HEADINGS["technique"] if candidate.direction == "practice" else
-                       artist_radar.HEADINGS[info["feature"]])
-        title = shorten(item["title"], 120)
-        lines.extend(["", f"<b>{html.escape(heading)}</b>", link(title, item["url"]),
-                      html.escape(shorten(item["summary"], 280))])
-        if item.get("reviewed") and item["why"] and not ASSIGNMENT.search(item["why"]):
-            lines.append(html.escape(shorten(item["why"], 150)))
-        meta = [candidate.source["name"]]
-        if item.get("published"):
-            meta.append(dt.datetime.fromisoformat(item["published"]).astimezone(MOSCOW).strftime("%d.%m.%Y"))
-        if item.get("duration"):
-            meta.append(item["duration"])
-        if item["lang"] != "ru":
-            language = {"en": "Английский", "fr": "Французский", "de": "Немецкий",
-                        "und": "язык аудио не подтверждён"}.get(item["lang"], item["lang"])
-            translation = {"ru_audio": "русская озвучка", "ru_subtitles": "русские субтитры",
-                           "none": "без русского перевода",
-                           "unknown": "русские субтитры не подтверждены"}.get(item.get("translation"))
-            translation_source = item.get("translation_source")
-            if translation and translation_source:
-                translation += f" ({translation_source})"
-            meta.append(", ".join(filter(None, (language, translation))))
-        access = {"registration": "требуется регистрация", "unknown": "условия доступа уточняйте у источника"}
-        if item["access"] in access:
-            meta.append(access[item["access"]])
-        lines.append(f"<i>{html.escape(' · '.join(meta))}</i>")
-        if item.get("alternative") and url_check and url_check(item["alternative"], item.get("alternative_domains", [])):
-            lines.append(link("Официальная версия на другой платформе", item["alternative"]))
-        cover = sources.images(item, config)
-        featured = bool(info.get("artist"))
-        if candidate.publisher not in config.get("cover_exclusions", []) and cover and (
-                not url_check or url_check(cover["url"], config["image_domains"], image=True)):
-            images.append((featured, cover))
-        embed = item.get("player")
-        if embed and (not sources.allowed(embed, config["player_domains"]) or
-                      url_check and not url_check(embed, config["player_domains"])):
-            embed = None
-        if candidate.publisher not in config.get("cover_exclusions", []) and not item.get("reviewed"):
-            previews.append((featured, bool(embed), {"url": item["url"], "native": True, "embed": embed,
-                                                      "credit": candidate.source["name"], "title": item["title"]}))
-    question = themes.get(theme, {}).get("question") or next(
-        (c.item["question"] for c in picked if c.item.get("question")), "")
-    if question and sequence % 3 == 2:
-        lines.extend(["", html.escape(question)])
-    images = sorted(images, key=lambda pair: pair[0], reverse=True)
-    licensed = list({image["url"]: image for _, image in images}.values())
-    previews = sorted(previews, key=lambda pair: pair[:2], reverse=True)
-    native = previews[(sequence - 1) % len(previews)][2] if previews else None
-    if previews and previews[0][0]:
-        primary = [entry[2] for entry in previews if entry[0]]
-        native = primary[(sequence - 1) % len(primary)]
-    if config.get("collage") and len(licensed) >= 2:
-        visual = {"collage": licensed[:4], "url": native["url"] if native else picked[0].item["url"]}
-    elif images and (images[0][0] or not native):
-        visual = licensed[0]
-    else:
-        visual = native
-    credit = (visual.get("collage", [visual]) if visual and not visual.get("native") else [])
-    for image in credit:
-        license = image["license"]
-        license_text = link(license, "https://creativecommons.org/licenses/by/4.0/") if license == "CC BY 4.0" else license
-        lines.extend(["", f"<i>Иллюстрация · {link(image['credit'], image['url'])} · {license_text}</i>"])
-    lines.extend(["", link("Основной сайт Art Radar", SITE)])
-    text = "\n".join(lines)
+        header.append(f"<b>{html.escape(config['themes'][theme]['title'])}</b>")
+
+    ordered = list(picked)
+    lead = next((card for card in picked if card.stream == "priority" and card.fresh and
+                 card.age <= config["news_days"] and card.score >= config["extra_score"]), None)
+    if lead:
+        ordered.remove(lead)
+        ordered.insert(0, lead)
+    cards = [display_card(candidate, config, url_check) for candidate in ordered]
+    credits = []
+    for image in {card["image"]["url"]: card["image"] for card in cards if card["image"]}.values():
+        license_name = image["license"]
+        license_label = link(license_name, "https://creativecommons.org/licenses/by/4.0/") if license_name == "CC BY 4.0" else license_name
+        credits.append(f"<i>{link(image['credit'], image['url'])} · {license_label}</i>")
+    footer = [*credits, link("Сайт Art Radar", SITE)]
+
+    def assemble(summaries):
+        blocks = ["\n".join(header)]
+        for card, summary in zip(cards, summaries):
+            lines = [html.escape(card["heading"]), f"<b>{html.escape(card['title'])}</b>"]
+            if summary:
+                lines.append(html.escape(summary))
+            lines.append(card["footer"])
+            blocks.append("\n".join(lines))
+        return "\n\n".join([*blocks, "\n".join(footer)])
+
+    empty = assemble([""] * len(cards))
+    remaining = PHOTO_CAPTION_LIMIT - length(empty)
+    summaries = []
+    for index, card in enumerate(cards):
+        limit = min(170, remaining // (len(cards) - index) - 1)
+        summary = next((option for option in card["summaries"] if option and length(html.escape(option)) <= limit), "")
+        remaining -= length(html.escape(summary)) + bool(summary)
+        summaries.append(summary)
+    text = assemble(summaries)
     if length(text) > 4096:
         raise ValueError("Выпуск превышает лимит Telegram")
-    return text, visual
+    cover = {"date": date_text, "tiles": [{"section": card["heading"].split(" ", 1)[-1],
+                                            "title": card["title"], "image": card["image"]} for card in cards]}
+    return text, cover
