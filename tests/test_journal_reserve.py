@@ -3,7 +3,7 @@ import sqlite3
 import unittest
 from types import SimpleNamespace
 
-from radar import editorial, journal_illustrations as illustrations, journal_reserve, journal_visuals
+from radar import editorial, journal_collections, journal_illustrations as illustrations, journal_reserve, journal_visuals
 from radar.telegram_journal import verified_visual_issue
 
 
@@ -42,6 +42,16 @@ class ReserveTest(unittest.TestCase):
         self.assertIn("12 портретов углём за 15 мин.", card["summary"])
         self.assertNotIn("duration", card)
         self.assertIsNone(editorial.official_drawing_exercise({**raw, "title": "Charcoal prints for sale"}, source))
+
+    def test_collection_note_requires_artwork_creation_date_and_attribution(self):
+        art = {"role": "artwork", "registry": "Wikimedia Commons", "sha256": "a" * 64,
+               "source": "https://commons.wikimedia.org/wiki/File:Work.jpg",
+               "catalogue": {"creator": "Илья Репин", "title": "Не ждали", "created": "между 1884 и 1888",
+                             "details": "oil on canvas", "categories": "PD-Art (PD-old-auto-expired)"}}
+        work = journal_collections.entry(art)
+        self.assertEqual((work["title"], work["years"], work["medium"]), ("Не ждали", "1884–1888", "масло на холсте"))
+        art["catalogue"]["created"] = "2023-01-04 09:10:22"
+        self.assertIsNone(journal_collections.entry(art))
 
     def test_catalogued_art_requires_creator_and_per_file_reuse_rights(self):
         work = {"url": "https://upload.wikimedia.org/example.jpg", "mime": "image/jpeg",

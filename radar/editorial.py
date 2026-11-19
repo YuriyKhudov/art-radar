@@ -524,6 +524,8 @@ def display_card(candidate, config, url_check):
     if item["kind"] == "video":
         label = "Смотреть видео"
         duration = f" · {html.escape(item['duration'])}" if item.get("duration") else ""
+    elif item["kind"] == "collection":
+        heading, label = "🎨 Из открытой коллекции", "Открыть каталог"
     elif info.get("feature") == "works":
         label = "Посмотреть работы"
     image = sources.images({**item, **custom}, config)
@@ -586,8 +588,8 @@ def render_visual(picked, config, theme, now):
         feature = custom.get("feature_artist") or (author if card["heading"] == "🔎 Художник в поле зрения" else None)
         if feature:
             feature = config.get("presentation", {}).get("names", {}).get(feature, feature)
-        summary = article["summary"] if article else next(
-            (value for value in card["summaries"] if value and length(html.escape(value)) <= 200), "")
+        summary = (article["summary"] if article else item["summary"] if item["kind"] == "collection" else next(
+            (value for value in card["summaries"] if value and length(html.escape(value)) <= 200), ""))
         section = "🎨 Художник в поле зрения" if feature and article else custom.get("section", card["heading"])
         checked = item.get("journal_visual")
         output.append({"section": section, "artist": feature if article else None, "title": card["title"],
