@@ -23,8 +23,8 @@ from dataclasses import replace
 from http.client import HTTPException
 from pathlib import Path
 
-from radar import (artist_pages, artist_radar, editorial, editorial_sources as sources, journal_archive,
-                   journal_articles, journal_cover, journal_reserve, journal_visuals, visual_issue)
+from radar import (artist_pages, artist_radar, editorial, editorial_sources as sources, journal_articles,
+                   journal_cover, journal_reserve, journal_visuals, visual_issue)
 
 MOSCOW = dt.timezone(dt.timedelta(hours=3), "MSK")
 DEFAULT_DB = sources.ROOT.parent / "data" / "journal.sqlite3"
@@ -49,9 +49,6 @@ def encode(value):
 
 def collected_inputs(config, now, artist_snapshot=None, previous=()):
     live, report = sources.collect(config)
-    evergreen, archive_report = journal_archive.collect(config)
-    live = combine(evergreen, live)
-    report.extend(archive_report)
     if config.get("artist_radar"):
         catalog = {source["id"]: source for source in config["sources"]}
         covered = {catalog[item["source"]].get("artist_id") for item in live if item.get("published")
@@ -286,7 +283,8 @@ def load_harvest(paths, config):
             "items": items}
 
 
-def prepare(pool, config, history, now, theme, sequence, verify, article_checks=None, visual_checks=None, reserve=None):
+def prepare(pool, config, history, now, theme, sequence, verify, article_checks=None, visual_checks=None, reserve=None,
+            replay_reserve=False):
     history = [*history, *({"url": url, "title": "", "source": ""} for url in config.get("previously_published", []))]
     if reserve is not None:
         pool = combine(pool, reserve.pool(now))
@@ -316,7 +314,7 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
         return verified[card.key]
 
     picked, audit = editorial.select(cards, config, theme, validate if verify or article_checks else None, history, now,
-                                     reserve=reserve is not None, visual=visual_checks is not None)
+                                     reserve=reserve is not None or replay_reserve, visual=visual_checks is not None)
     if reserve is not None:
         with reserve.connection:
             reserve.confirm([key for key, passed in verified.items() if passed is True], now)
@@ -1318,12 +1316,20 @@ def main():
                 if args.automatic_issues:
                     qualify_video_reserve(reserve, eligible, now, verify)
                 reserve_report = {"before": reserve.report(now), "issues": []}
+                pool = combine(pool, reserve.pool(now))
+                inputs["uses_reserve"] = True
+                inputs["cards_outside_harvest"] = [item for item in pool
+                                                  if item != captured_urls.get(sources.canonical(item["url"]))]
+            elif replay and replay.get("uses_reserve"):
+                inputs["uses_reserve"] = True
             for sequence, (as_of, theme) in enumerate(selections, count + 1):
                 picked, issue = prepare(pool, config, history, as_of, theme, sequence, verify=verify,
-                                        article_checks=article_checks, visual_checks=visuals, reserve=reserve)
+                                        article_checks=article_checks, visual_checks=visuals, reserve=reserve,
+                                        replay_reserve=bool(replay and replay.get("uses_reserve")))
                 if not picked and theme and not inputs["theme_explicit"]:
                     picked, issue = prepare(pool, config, history, as_of, None, sequence, verify=verify,
-                                            article_checks=article_checks, visual_checks=visuals, reserve=reserve)
+                                            article_checks=article_checks, visual_checks=visuals, reserve=reserve,
+                                            replay_reserve=bool(replay and replay.get("uses_reserve")))
                 issue["as_of"] = as_of.date().isoformat()
                 if args.automatic_issues:
                     issue["cover"] = None

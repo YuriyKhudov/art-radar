@@ -18,8 +18,10 @@ class Page(HTMLParser):
     def __init__(self):
         super().__init__()
         self.meta, self.links, self.structure, self.headings, self.dates = {}, [], [], [], []
+        self.captions = []
         self.script = None
         self.heading = None
+        self.caption = None
 
     def handle_starttag(self, tag, attrs):
         fields = dict(attrs)
@@ -35,6 +37,8 @@ class Page(HTMLParser):
                 self.meta.setdefault("article:published_time", fields["datetime"])
         if tag in {"h1", "h2", "h3"}:
             self.heading = []
+        if tag == "figcaption":
+            self.caption = []
         if tag == "script" and (fields.get("type") or "").lower() == "application/ld+json":
             self.script = []
 
@@ -42,6 +46,9 @@ class Page(HTMLParser):
         if tag in {"h1", "h2", "h3"} and self.heading is not None:
             self.headings.append(sources.clean("".join(self.heading)))
             self.heading = None
+        if tag == "figcaption" and self.caption is not None:
+            self.captions.append(sources.clean("".join(self.caption)))
+            self.caption = None
         if tag == "script" and self.script is not None:
             try:
                 self.structure.append(json.loads("".join(self.script)))
@@ -54,6 +61,8 @@ class Page(HTMLParser):
             self.script.append(text)
         elif self.heading is not None:
             self.heading.append(text)
+        elif self.caption is not None:
+            self.caption.append(text)
 
 
 def records(structure):

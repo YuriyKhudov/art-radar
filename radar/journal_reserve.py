@@ -28,7 +28,7 @@ def expiry(item, today, news_days):
         bucket = "archive"
     else:
         bucket = "discovery"
-    return bucket, (today if item.get("archive_index") else date or today) + dt.timedelta(days=RETENTION[bucket])
+    return bucket, (today if bucket == "archive" else date or today) + dt.timedelta(days=RETENTION[bucket])
 
 
 class Reserve:
@@ -54,7 +54,7 @@ class Reserve:
             (url, item, bucket, expires, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(url) DO UPDATE SET item=excluded.item, bucket=excluded.bucket, last_seen=excluded.last_seen,
               expires=CASE WHEN json_extract(excluded.item, '$.published') IS NULL
-                                OR json_extract(excluded.item, '$.archive_index') IS NOT NULL THEN editorial_reserve.expires
+                                OR excluded.bucket = 'archive' THEN editorial_reserve.expires
                            ELSE excluded.expires END,
               verified_on=CASE WHEN editorial_reserve.item=excluded.item THEN editorial_reserve.verified_on END
         """, rows)

@@ -67,6 +67,7 @@ def search_terms(card, topic, page, config):
     contexts = [title, evidence]
     if page:
         contexts.extend(s for s in page.headings[1:14] if 5 < len(s) < 100)
+        contexts.extend(s for s in page.captions[:12] if 5 < len(s) < 260)
         for node in artist_pages.records(page.structure):
             typ = node.get("@type")
             if typ == "VisualArtwork" and isinstance(node.get("name"), str):
@@ -76,7 +77,7 @@ def search_terms(card, topic, page, config):
                     nodes = node.get(field) or []
                     authors.extend(n["name"] for n in (nodes if isinstance(nodes, list) else [nodes])
                                    if isinstance(n, dict) and isinstance(n.get("name"), str))
-    for context in contexts[:10]:
+    for context in contexts:
         named_works.extend(a or b for a, b in QUOTED.findall(context))
     if topic in {"exhibition", "fair", "photography"}:
         participants = re.findall(r"(?:работы|произведения|участники:|фотографии|картины)\s+([^.!?]{4,130})", evidence, re.I)
@@ -230,7 +231,8 @@ def search(card, topic, page, config, read_page=journal_articles.public_page, ro
             records = commons_query(term, file=purpose == "file")
             matches = [asset for row in records if (asset := commons_asset(row, topic, authors, works, term, purpose))]
             if named_subject:
-                matches = [asset for asset in matches if any(equivalent(asset["work"], work) for work in works)]
+                matches = [{**asset, "work": works[0]} for asset in matches
+                           if any(equivalent(asset["work"], work) for work in works)]
             trace.append({"provider": "Wikimedia Commons", "query": term, "basis": purpose,
                           "found": len(records), "matched": len(matches)})
             for asset in matches:

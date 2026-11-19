@@ -331,7 +331,10 @@ def collect(config):
         report.append({"source": "youtube-details", "name": "YouTube Data API",
                        "count": 0, "status": ", ".join(errors) or "ok"})
     crossposts(items, config)
-    return items, report
+    from radar import journal_archive
+
+    archived, archive_report = journal_archive.collect(config)
+    return [*archived, *items], [*report, *archive_report]
 
 
 def images(item, config):

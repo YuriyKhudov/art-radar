@@ -82,19 +82,20 @@ jobs:
           github-token: ${{ github.token }}
           path: excluded-preview
       - name: Оформить выпуск из сохранённого отбора
-        if: inputs.preview_run_id != '' && !inputs.comparison
+        if: inputs.mode == 'preview' && inputs.preview_run_id != '' && !inputs.comparison
         run: >-
           python -m radar.telegram_journal preview
           --snapshot previous-preview/harvest.json --selection previous-preview/selection.json
       - name: Подготовить одинаковый выпуск для двух визуальных вариантов
-        if: inputs.preview_run_id != '' && inputs.comparison
+        if: inputs.mode == 'preview' && inputs.preview_run_id != '' && inputs.comparison
         run: >-
           python -m radar.telegram_journal preview --snapshot previous-preview/harvest.json
           --selection previous-preview/selection.json --comparison
       - name: Собрать выпуск для просмотра
-        if: inputs.preview_run_id == ''
+        if: inputs.mode == 'automatic_preview' || inputs.preview_run_id == ''
         env:
           MODE: ${{ inputs.mode }}
+          PREVIEW_RUN_ID: ${{ inputs.preview_run_id }}
           EXCLUDE_RUN_ID: ${{ inputs.exclude_run_id }}
           ILLUSTRATED: ${{ inputs.illustrated }}
           PREVIEW_URLS: ${{ inputs.preview_urls }}
@@ -105,12 +106,20 @@ jobs:
         run: |
           set -eu
           args=()
-          if [[ "$MODE" == automatic_preview ]]; then args+=(--automatic-issues 3); fi
+          if [[ "$MODE" == automatic_preview ]]; then
+            args+=(--automatic-issues 3)
+            python -m unittest discover -s tests -q
+          fi
           if [[ -n "$EXCLUDE_RUN_ID" ]]; then args+=(--exclude-audit excluded-preview/audit.json); fi
           if [[ "$ILLUSTRATED" == true ]]; then args+=(--illustrated); fi
           read -r -a preview_urls <<< "$PREVIEW_URLS"
           for url in "${preview_urls[@]}"; do args+=(--only-url "$url"); done
-          python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh "${args[@]}"
+          if [[ "$MODE" == automatic_preview && -n "$PREVIEW_RUN_ID" ]]; then
+            args+=(--snapshot previous-preview/harvest.json)
+          else
+            args+=(--refresh)
+          fi
+          python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview "${args[@]}"
       - uses: actions/upload-artifact@v4
         if: ${{ success() || failure() }}
         with:
@@ -209,7 +218,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch &&
         (inputs.mode == 'prepare_group' || inputs.mode == 'confirmed' || inputs.mode == 'absent'))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: write
     concurrency:

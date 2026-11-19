@@ -204,6 +204,11 @@ class VisualChecks:
                 for digest, asset in self.verify_images(fresh, topic).items():
                     checked.setdefault(digest, asset)
                 candidates.extend(fresh)
+                if topic == "technique":
+                    supplied = {asset["role"] for asset in checked.values()}
+                    enough = "technique_steps" in supplied or {"creative_process", "technique_result"} <= supplied
+                else:
+                    enough = len(checked) >= (3 if topic == "artist" else 1)
         if not self.offline and not is_video and self.config.get("extended_illustrations") and not enough:
             found, search_log = journal_illustrations.search(card, topic, page, self.config, self.pages, self.robots)
             for digest, asset in self.verify_images(found, topic).items():
@@ -237,7 +242,7 @@ class VisualChecks:
         works = set()
         for asset in candidates[:12] if not self.offline else []:
             role = role_for(asset, topic)
-            work = artist_pages.sources.clean(asset.get("work", "")).casefold()
+            work = sources.clean(asset.get("work", "")).casefold()
             if not role or work and work in works:
                 continue
             for validated, _ in self.photos([asset]):
@@ -246,4 +251,6 @@ class VisualChecks:
                     checked.setdefault(validated["sha256"], {**validated, "role": role})
                     if work:
                         works.add(work)
+            if len(checked) == 5:
+                break
         return checked

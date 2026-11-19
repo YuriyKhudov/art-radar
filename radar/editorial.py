@@ -386,12 +386,11 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None, re
             needs_picture = position > 0 and not any((p.item.get("journal_visual") or {}).get("images")
                                                      or (p.item.get("journal_visual") or {}).get("video") for p in picked)
             media = card.item.get("journal_visual") or {}
-            if needs_picture and (media.get("images") or media.get("video")):
-                visual += 18
+            completes_visual_issue = needs_picture and bool(media.get("images") or media.get("video"))
             rating = (card.score + visual + balance + boost + freshness - 8 * rubrics[card.direction]
                       - min(24, 7 * month_providers[card.publisher])
                       + (3 if card.russian == russian_needed else 0) + artist_boost + style_boost + stream_balance)
-            return featured, rating
+            return completes_visual_issue, featured, rating
 
         eligible.sort(key=priority, reverse=True)
         for candidate in eligible:
