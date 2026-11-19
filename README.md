@@ -52,4 +52,6 @@ python -m radar.build --out _site    # собрать сайт
 python -m unittest tests.test_sales  # проверки
 ```
 
+[Тестовый режим Telegram-журнала и каталог источников](docs/telegram-journal.md)
+
 </details>

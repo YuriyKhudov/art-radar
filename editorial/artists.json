@@ -1,0 +1,1595 @@
+{
+  "checked_on": "2026-11-19",
+  "mix": {
+    "priority": 0.3,
+    "discovery": 0.3,
+    "general": 0.4
+  },
+  "providers": [
+    {
+      "id": "artist-colossal",
+      "publisher": "colossal",
+      "name": "Colossal",
+      "lang": "en",
+      "domain": "thisiscolossal.com",
+      "endpoint": "https://www.thisiscolossal.com/wp-json/wp/v2/posts",
+      "priority": 4.6,
+      "discovery": [
+        "charcoal",
+        "figure painting",
+        "oil painting",
+        "gouache",
+        "graphite",
+        "expressive portrait",
+        "landscape painting"
+      ]
+    },
+    {
+      "id": "artist-jacksons",
+      "publisher": "jacksons",
+      "name": "Jackson’s Art Blog",
+      "lang": "en",
+      "domain": "jacksonsart.com",
+      "endpoint": "https://www.jacksonsart.com/blog/wp-json/wp/v2/posts",
+      "priority": 4.6,
+      "discovery": [
+        "figurative",
+        "charcoal",
+        "artist insights",
+        "inside the sketchbook",
+        "interview with printmaker",
+        "ink painting",
+        "palette knife"
+      ]
+    },
+    {
+      "id": "artist-art21",
+      "publisher": "art21",
+      "name": "Art21",
+      "lang": "en",
+      "domain": "art21.org",
+      "endpoint": "https://art21.org/wp-json/wp/v2/posts",
+      "priority": 4.7,
+      "discovery": [
+        "painting",
+        "painter",
+        "drawing"
+      ],
+      "named": false
+    },
+    {
+      "id": "artist-artmost",
+      "publisher": "art-most",
+      "name": "Арт-Мост",
+      "lang": "ru",
+      "domain": "art-most.com",
+      "endpoint": "https://art-most.com/wp-json/wp/v2/posts",
+      "priority": 4.4,
+      "discovery": [
+        "импрессионизм",
+        "маслом",
+        "живопись"
+      ]
+    },
+    {
+      "id": "artist-iskusstvo",
+      "publisher": "iskusstvo-info",
+      "name": "Искусство",
+      "lang": "ru",
+      "domain": "iskusstvo-info.ru",
+      "endpoint": "https://iskusstvo-info.ru/wp-json/wp/v2/posts",
+      "priority": 4.5,
+      "discovery": [
+        "современная живопись",
+        "выставка живописи"
+      ]
+    },
+    {
+      "id": "artist-artandyou",
+      "publisher": "artandyou",
+      "name": "ARTandYou",
+      "lang": "ru",
+      "domain": "artandyou.ru",
+      "endpoint": "https://artandyou.ru/wp-json/wp/v2/posts",
+      "priority": 4.5,
+      "discovery": [
+        "живопись",
+        "рисунок"
+      ],
+      "named": false
+    },
+    {
+      "id": "artist-outdoorpainter",
+      "publisher": "outdoorpainter",
+      "name": "OutdoorPainter",
+      "lang": "en",
+      "domain": "outdoorpainter.com",
+      "endpoint": "https://www.outdoorpainter.com/wp-json/wp/v2/posts",
+      "priority": 4.5,
+      "discovery": [
+        "painter",
+        "oil painting",
+        "portrait",
+        "impressionism"
+      ],
+      "named": false
+    },
+    {
+      "id": "artist-paintingperceptions",
+      "publisher": "paintingperceptions",
+      "name": "Painting Perceptions",
+      "lang": "en",
+      "domain": "paintingperceptions.com",
+      "endpoint": "https://paintingperceptions.com/wp-json/wp/v2/posts",
+      "priority": 4.5,
+      "discovery": [
+        "figurative",
+        "studio visit",
+        "oil painting",
+        "interview"
+      ],
+      "named": false
+    }
+  ],
+  "styles": [
+    {
+      "id": "impressionism",
+      "label": "Импрессионизм",
+      "ru": [
+        "импрессиониз",
+        "пленэр"
+      ],
+      "en": [
+        "impressionism",
+        "impressionist",
+        "plein air"
+      ]
+    },
+    {
+      "id": "postimpressionism",
+      "label": "Постимпрессионизм",
+      "ru": [
+        "постимпрессиони"
+      ],
+      "en": [
+        "post-impressionism",
+        "post-impressionist"
+      ]
+    },
+    {
+      "id": "expression",
+      "label": "Экспрессивная живопись",
+      "ru": [
+        "экспрессивн",
+        "экспрессиониз",
+        "выразительн"
+      ],
+      "en": [
+        "expressive painting",
+        "expressive portrait",
+        "expressionist"
+      ]
+    },
+    {
+      "id": "figurative",
+      "label": "Современный фигуратив",
+      "ru": [
+        "фигуратив",
+        "фигурн"
+      ],
+      "en": [
+        "figurative",
+        "figure painting",
+        "figure drawing"
+      ]
+    },
+    {
+      "id": "abstract-figure",
+      "label": "Абстрактный фигуратив",
+      "ru": [
+        "абстрактный фигуратив"
+      ],
+      "en": [
+        "abstract figurative",
+        "abstraction and figuration",
+        "between abstraction and"
+      ]
+    },
+    {
+      "id": "portrait",
+      "label": "Портрет",
+      "ru": [
+        "портрет"
+      ],
+      "en": [
+        "portrait",
+        "portraiture",
+        "portraits"
+      ]
+    },
+    {
+      "id": "brushwork",
+      "label": "Свободный и разрывный мазок",
+      "ru": [
+        "мазок",
+        "мазки",
+        "мазков"
+      ],
+      "en": [
+        "brushstrokes",
+        "brushwork",
+        "broken brushwork"
+      ]
+    },
+    {
+      "id": "knife",
+      "label": "Мастихин",
+      "ru": [
+        "мастихин"
+      ],
+      "en": [
+        "palette knife",
+        "painting knife"
+      ]
+    },
+    {
+      "id": "texture",
+      "label": "Выразительная фактура",
+      "ru": [
+        "фактура",
+        "фактурн",
+        "импасто"
+      ],
+      "en": [
+        "impasto",
+        "textured paint",
+        "texture",
+        "sand and oil"
+      ]
+    },
+    {
+      "id": "charcoal",
+      "label": "Рисунок углём",
+      "ru": [
+        "углём",
+        "углем",
+        "рисунок угл",
+        "древесный уголь"
+      ],
+      "en": [
+        "charcoal",
+        "charcoal drawing",
+        "charcoal drawings"
+      ]
+    },
+    {
+      "id": "gouache",
+      "label": "Гуашь",
+      "ru": [
+        "гуаш"
+      ],
+      "en": [
+        "gouache"
+      ]
+    },
+    {
+      "id": "oil",
+      "label": "Живопись маслом",
+      "ru": [
+        "масляная живопись",
+        "масляной краск",
+        "маслом"
+      ],
+      "en": [
+        "oil paint",
+        "oil painting",
+        "oil on canvas",
+        "oil paintings"
+      ]
+    },
+    {
+      "id": "watercolour",
+      "label": "Акварель",
+      "ru": [
+        "акварел"
+      ],
+      "en": [
+        "watercolour",
+        "watercolor"
+      ]
+    },
+    {
+      "id": "mixed",
+      "label": "Смешанные и экспериментальные техники",
+      "ru": [
+        "смешанн",
+        "экспериментальн",
+        "монотип"
+      ],
+      "en": [
+        "mixed media",
+        "monotype",
+        "marbled papers",
+        "experimental painting"
+      ]
+    },
+    {
+      "id": "colour",
+      "label": "Свет и цвет",
+      "ru": [
+        "колорит",
+        "светотен",
+        "цветовой контраст"
+      ],
+      "en": [
+        "colour and light",
+        "light and colour",
+        "color and light",
+        "chiaroscuro",
+        "palette"
+      ]
+    },
+    {
+      "id": "composition",
+      "label": "Композиция",
+      "ru": [
+        "композици"
+      ],
+      "en": [
+        "composition",
+        "compositions"
+      ]
+    },
+    {
+      "id": "abstraction",
+      "label": "Реализм и абстракция",
+      "ru": [
+        "абстракци",
+        "абстрактн"
+      ],
+      "en": [
+        "abstract painting",
+        "abstraction",
+        "abstract oil"
+      ]
+    },
+    {
+      "id": "graphite",
+      "label": "Рисунок графитом",
+      "ru": [
+        "графит"
+      ],
+      "en": [
+        "graphite",
+        "graphite drawings"
+      ]
+    },
+    {
+      "id": "light",
+      "label": "Работа со светом",
+      "ru": [
+        "работа со светом",
+        "освещение",
+        "светове"
+      ],
+      "en": [
+        "chiaroscuro",
+        "natural light",
+        "studio lighting"
+      ]
+    },
+    {
+      "id": "expressive-portrait",
+      "label": "Экспрессивная портретная живопись",
+      "ru": [
+        "экспрессивный портрет",
+        "экспрессивная портретная живопись"
+      ],
+      "en": [
+        "expressive portraits",
+        "expressive portraiture",
+        "expressive portrait"
+      ]
+    },
+    {
+      "id": "sand-oil",
+      "label": "Масло и песок",
+      "ru": [
+        "масло и песок",
+        "маслом и песком"
+      ],
+      "en": [
+        "sand and oil",
+        "oil and sand"
+      ]
+    },
+    {
+      "id": "ink",
+      "label": "Рисунок тушью",
+      "ru": [
+        "тушью"
+      ],
+      "en": [
+        "ink drawings",
+        "ink drawing",
+        "ink and graphite"
+      ]
+    },
+    {
+      "id": "marbling",
+      "label": "Мраморирование бумаги",
+      "ru": [
+        "мраморирование бумаги"
+      ],
+      "en": [
+        "marbled papers",
+        "paper marbling"
+      ]
+    }
+  ],
+  "artists": [
+    {
+      "id": "korolenkov",
+      "ru": "Вячеслав Короленков",
+      "original": "Vyacheslav Korolenkov",
+      "aliases": [
+        "Вячеслава Короленкова",
+        "Slava Korolenkov"
+      ],
+      "tier": "main",
+      "styles": [
+        "impressionism",
+        "oil",
+        "colour",
+        "brushwork"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.korolenkov.art/",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://www.youtube.com/channel/UC0Wjz2-10nV0sq3dYh-hmAA",
+          "kind": "youtube",
+          "state": "atom",
+          "channel": "UC0Wjz2-10nV0sq3dYh-hmAA",
+          "lang": "ru"
+        },
+        {
+          "url": "https://rutube.ru/channel/23971535/",
+          "kind": "rutube",
+          "state": "channel_api",
+          "channel": 23971535,
+          "lang": "ru"
+        },
+        {
+          "url": "https://vk.com/id142481352",
+          "kind": "vk",
+          "state": "needs_api",
+          "owner": 142481352
+        },
+        {
+          "url": "https://t.me/slava_korolenkov",
+          "kind": "telegram",
+          "state": "manual"
+        }
+      ]
+    },
+    {
+      "id": "dugarzhapov",
+      "ru": "Бато Дугаржапов",
+      "original": "Bato Dugarzhapov",
+      "aliases": [
+        "Бато Дугаржапова",
+        "Дугаржапов Бато",
+        "Bato Dugarjapov"
+      ],
+      "tier": "main",
+      "styles": [
+        "impressionism",
+        "oil",
+        "light",
+        "brushwork"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://khankhalaev.org/artists/bato-dugarzhapov/bio/",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://art-most.com/product-detail/dugarzhapov-bato/",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://rutube.ru/channel/45867465/videos/",
+          "kind": "gallery_channel",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "jeremy-mann",
+      "ru": "Джереми Манн",
+      "original": "Jeremy Mann",
+      "aliases": [
+        "Джереми Манна",
+        "Jeremy A. Mann"
+      ],
+      "tier": "main",
+      "styles": [
+        "oil",
+        "figurative",
+        "light",
+        "expression"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://jeremymann.com/",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://principlegallery.com/wp-content/uploads/2026/02/Mann-Jeremy-Updated-Bio-Template-2.pdf",
+          "kind": "gallery",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "mad-charcoal",
+      "ru": "Мэд Чаркол",
+      "original": "Mad Charcoal",
+      "aliases": [
+        "Mad Charcoal Art",
+        "Josh Hernandez",
+        "Джош Эрнандес",
+        "Джош Хернандес"
+      ],
+      "tier": "main",
+      "styles": [
+        "charcoal",
+        "expression",
+        "portrait",
+        "texture"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://madcharcoal.com/pages/artist-cv",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://lucafineart.com/artist/mad-charcoal",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://www.instagram.com/mad.charcoal/",
+          "kind": "instagram",
+          "state": "manual"
+        },
+        {
+          "url": "https://www.facebook.com/madcharcoalart",
+          "kind": "facebook",
+          "state": "needs_api"
+        },
+        {
+          "url": "https://www.youtube.com/@MadCharcoal",
+          "kind": "youtube",
+          "state": "atom",
+          "channel": "UC2TDepkwM-AV5NbED6-jhdg",
+          "lang": "en"
+        }
+      ]
+    },
+    {
+      "id": "lokhmatova",
+      "ru": "Иветта Лохматова",
+      "original": "Ivetta Lokhmatova",
+      "aliases": [
+        "Иветты Лохматовой",
+        "Иветта Викторовна Лохматова",
+        "Ivetta Lohmatova"
+      ],
+      "tier": "main",
+      "styles": [
+        "impressionism",
+        "oil",
+        "colour",
+        "texture"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://lokhmatovaivettashop.ru/",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://market.forsage.art/authors/lohmatova-ivetta-viktorovna",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://crsc.fr/vystavka-zhivopisi-ivetty-lohmatovoj-masterskaja-solnca/?lang=ru",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "yermolova",
+      "ru": "Ирина Ермолова",
+      "original": "Iryna Yermolova",
+      "aliases": [
+        "Ірина Єрмолова",
+        "Irina Yermolova",
+        "Ирины Ермоловой"
+      ],
+      "tier": "main",
+      "styles": [
+        "figurative",
+        "abstract-figure",
+        "oil",
+        "colour"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.irynayermolova.com/",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://mckaywilliamson.com/collection/artist/iryna-yermolova/",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://signetcontemporaryart.com/artists/iryna-yermolova/",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://www.artescapeitaly.com/irynayermolova2027",
+          "kind": "event",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "chirun",
+      "ru": "Илья Чирун",
+      "original": "Ilya Chirun",
+      "aliases": [
+        "Ilya Chirún",
+        "Ильи Чируна",
+        "Илья Владимирович Чирун"
+      ],
+      "tier": "main",
+      "styles": [
+        "impressionism",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.chirungallery.com/",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://vitruvianogallery.com.ar/artista/chirun-ilya/",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://t.me/chirun_Ilya",
+          "kind": "telegram",
+          "state": "manual"
+        }
+      ]
+    },
+    {
+      "id": "morey",
+      "ru": "Магдалена Морей",
+      "original": "Magdalena Morey",
+      "aliases": [
+        "Магдалены Морей"
+      ],
+      "tier": "main",
+      "styles": [
+        "mixed",
+        "texture",
+        "abstraction",
+        "colour"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://magdalenamorey.com/about.html",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://www.magdalenamorey.com/gallery-representation",
+          "kind": "gallery_index",
+          "state": "reference"
+        },
+        {
+          "url": "https://www.facebook.com/MagdalenaMoreyArt",
+          "kind": "facebook",
+          "state": "unconfirmed_account"
+        }
+      ]
+    },
+    {
+      "id": "makarov",
+      "ru": "Виталий Макаров",
+      "original": "Vitaly Makarov",
+      "aliases": [
+        "Виталия Макарова",
+        "Vitaliy Makarov"
+      ],
+      "tier": "main",
+      "styles": [
+        "impressionism",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.facebook.com/vitaly.makarov1",
+          "kind": "facebook",
+          "state": "unconfirmed_account"
+        },
+        {
+          "url": "https://www.outdoorpainter.com/interview-plein-air-ukrainian-artist-vitaly-makarov/",
+          "kind": "interview",
+          "state": "reference"
+        },
+        {
+          "url": "https://makarov.artycool.io/",
+          "kind": "portfolio",
+          "state": "unconfirmed_identity"
+        },
+        {
+          "url": "https://pravda-kmv.ru/zadacha-hudozhnika-peredat-vpechatlenie/",
+          "kind": "interview",
+          "state": "reference"
+        }
+      ],
+      "note": "Пейзажист, окончивший училище в Харькове и вернувшийся в Ессентуки, подтверждён двумя интервью. Привязка указанного профиля Facebook не подтверждена.",
+      "identity_context": [
+        "ессентук",
+        "харьковск",
+        "yessentuki",
+        "essentuki",
+        "kharkiv",
+        "stavropol",
+        "pravda-kmv.ru",
+        "outdoorpainter.com"
+      ]
+    },
+    {
+      "id": "schmid",
+      "ru": "Ричард Шмид",
+      "original": "Richard Schmid",
+      "aliases": [
+        "Ричарда Шмида"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "oil",
+        "brushwork",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.richardschmid.com/",
+          "kind": "estate",
+          "state": "reference"
+        }
+      ],
+      "historical": true
+    },
+    {
+      "id": "fechin",
+      "ru": "Николай Фешин",
+      "original": "Nicolai Fechin",
+      "aliases": [
+        "Николая Фешина",
+        "Nikolai Fechin",
+        "Nikolay Feshin",
+        "Nicolai Feshin"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "oil",
+        "portrait",
+        "texture",
+        "expression"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.taosartmuseum.org/nicolai-fechin.html",
+          "kind": "institution",
+          "state": "reference"
+        },
+        {
+          "url": "https://americanart.si.edu/artist/nicolai-fechin-1506",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ],
+      "historical": true
+    },
+    {
+      "id": "anastasia-kim",
+      "ru": "Анастасия Ким",
+      "original": "Anastasia Kim",
+      "aliases": [
+        "Анастасии Ким"
+      ],
+      "tier": "secondary",
+      "styles": [],
+      "enabled": false,
+      "profiles": [],
+      "note": "Недостаточно идентифицирующих данных для однозначной привязки к художнице или её аккаунту."
+    },
+    {
+      "id": "kanevsky",
+      "ru": "Алекс Каневский",
+      "original": "Alex Kanevsky",
+      "aliases": [
+        "Алекса Каневского",
+        "Aleksander Kanevsky"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "figurative",
+        "abstract-figure",
+        "mixed",
+        "oil"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.hollistaggart.com/artists/27-alex-kanevsky/",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://dolbychadwickgallery.com/artist/alex-kanevsky",
+          "kind": "gallery",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "masi",
+      "ru": "Антонио Мази",
+      "original": "Antonio Masi",
+      "aliases": [
+        "Антонио Маси"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "watercolour",
+        "texture",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.antoniomasi.com/",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://art.state.gov/personnel/antonio_masi/",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "demsteader",
+      "ru": "Марк Демстедер",
+      "original": "Mark Demsteader",
+      "aliases": [
+        "Марка Демстедера",
+        "Марк Демстидер"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "figurative",
+        "portrait",
+        "charcoal",
+        "expression"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.markdemsteader.com/about",
+          "kind": "official",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "mcloughlin",
+      "ru": "Киан Маклафлин",
+      "original": "Cian McLoughlin",
+      "aliases": [
+        "Киан Маклофлин",
+        "Kian McLoughlin"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "portrait",
+        "expression",
+        "figurative"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.cianmcloughlin.com/cv/",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://molesworthgallery.com/artists/33-cian-mcloughlin/overview/",
+          "kind": "gallery",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "miura",
+      "ru": "Терри Миура",
+      "original": "Terry Miura",
+      "aliases": [
+        "Терри Миюра"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "oil",
+        "impressionism",
+        "light",
+        "colour"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.terrymiura.com/about",
+          "kind": "official",
+          "state": "reference"
+        },
+        {
+          "url": "https://www.terrymiura.com/blog",
+          "kind": "studio_blog",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "liepke",
+      "ru": "Малкольм Липке",
+      "original": "Malcolm Liepke",
+      "aliases": [
+        "Malcolm T. Liepke",
+        "Малкольма Липке"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "figurative",
+        "portrait",
+        "oil",
+        "brushwork"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://arcadiacontemporary.com/artists/42-malcolm-t.-liepke/exhibitions/",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://wallsgallery.com/project/liepke/",
+          "kind": "gallery",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "baugh",
+      "ru": "Кейси Бо",
+      "original": "Casey Baugh",
+      "aliases": [
+        "Кейси Бау",
+        "Кейси Бауг"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "charcoal",
+        "portrait",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://caseybaugh.com/",
+          "kind": "official",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "salgado",
+      "ru": "Эндрю Сальгадо",
+      "original": "Andrew Salgado",
+      "aliases": [
+        "Эндрю Салгадо",
+        "Эндрю Сальгадо"
+      ],
+      "tier": "secondary",
+      "styles": [
+        "expression",
+        "figurative",
+        "colour",
+        "oil"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://beerslondon.com/artists/45-andrew-salgado/",
+          "kind": "gallery",
+          "state": "reference"
+        },
+        {
+          "url": "https://beerslondon.com/exhibitions/145-andrew-salgado-glory/",
+          "kind": "event",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "monet",
+      "ru": "Клод Моне",
+      "original": "Claude Monet",
+      "aliases": [
+        "Клода Моне"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.nga.gov/artists/1726-claude-monet",
+          "kind": "institution",
+          "state": "reference"
+        },
+        {
+          "url": "https://www.nga.gov/exhibitions/paris-1874",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "degas",
+      "ru": "Эдгар Дега",
+      "original": "Edgar Degas",
+      "aliases": [
+        "Эдгара Дега",
+        "Hilaire Germain Edgar Degas"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "figurative",
+        "composition"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.musee-orsay.fr/fr/programme/agenda/expositions/presentation/manet-degas",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "renoir",
+      "ru": "Огюст Ренуар",
+      "original": "Auguste Renoir",
+      "aliases": [
+        "Пьер Огюст Ренуар",
+        "Пьера Огюста Ренуара",
+        "Pierre-Auguste Renoir"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "oil",
+        "colour"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.nga.gov/exhibitions/paris-1874",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "pissarro",
+      "ru": "Камиль Писсарро",
+      "original": "Camille Pissarro",
+      "aliases": [
+        "Камиля Писсарро",
+        "Камилла Писсарро"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.nga.gov/exhibitions/paris-1874",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "sisley",
+      "ru": "Альфред Сислей",
+      "original": "Alfred Sisley",
+      "aliases": [
+        "Альфреда Сислея",
+        "Альфред Сисле"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.nga.gov/exhibitions/paris-1874",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "morisot",
+      "ru": "Берта Моризо",
+      "original": "Berthe Morisot",
+      "aliases": [
+        "Берты Моризо"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "brushwork",
+        "oil"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.nga.gov/artists/1733-berthe-morisot",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "manet",
+      "ru": "Эдуар Мане",
+      "original": "Édouard Manet",
+      "aliases": [
+        "Edouard Manet",
+        "Эдуара Мане"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "oil",
+        "figurative"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.musee-orsay.fr/fr/programme/agenda/expositions/presentation/manet-degas",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "cezanne",
+      "ru": "Поль Сезанн",
+      "original": "Paul Cézanne",
+      "aliases": [
+        "Paul Cezanne",
+        "Поля Сезанна"
+      ],
+      "tier": "historical",
+      "styles": [
+        "postimpressionism",
+        "composition",
+        "oil"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.clevelandart.org/art/1958.21",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "vangogh",
+      "ru": "Винсент Ван Гог",
+      "original": "Vincent van Gogh",
+      "aliases": [
+        "Винсента Ван Гога",
+        "Винсент ван Гог"
+      ],
+      "tier": "historical",
+      "styles": [
+        "postimpressionism",
+        "expression",
+        "oil",
+        "colour"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.vangoghmuseum.nl/en/art-and-stories/art/vincent-van-gogh",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "korovin",
+      "ru": "Константин Коровин",
+      "original": "Konstantin Korovin",
+      "aliases": [
+        "Константина Коровина",
+        "Constantin Korovin"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "brushwork",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://lavrus.tretyakov.ru/artists/konstantin-korovin/",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "serov",
+      "ru": "Валентин Серов",
+      "original": "Valentin Serov",
+      "aliases": [
+        "Валентина Серова"
+      ],
+      "tier": "historical",
+      "styles": [
+        "portrait",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://lavrus.tretyakov.ru/artists/valentin-serov/",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "grabar",
+      "ru": "Игорь Грабарь",
+      "original": "Igor Grabar",
+      "aliases": [
+        "Игоря Грабаря",
+        "Igor Grabar’"
+      ],
+      "tier": "historical",
+      "styles": [
+        "impressionism",
+        "brushwork",
+        "oil",
+        "light"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://lavrus.tretyakov.ru/artists/igor-grabar/",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "sorolla",
+      "ru": "Хоакин Соролья",
+      "original": "Joaquín Sorolla",
+      "aliases": [
+        "Joaquin Sorolla",
+        "Хоакина Сорольи",
+        "Joaquín Sorolla y Bastida"
+      ],
+      "tier": "historical",
+      "styles": [
+        "light",
+        "oil",
+        "impressionism"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://pares.cultura.gob.es/ParesBusquedas20/catalogo/autoridad/153621",
+          "kind": "institution",
+          "state": "reference"
+        },
+        {
+          "url": "https://www.cultura.gob.es/msorolla/la-coleccion/ingresos-colecciones.html",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    },
+    {
+      "id": "sargent",
+      "ru": "Джон Сингер Сарджент",
+      "original": "John Singer Sargent",
+      "aliases": [
+        "John Sargent",
+        "Джона Сингера Сарджента"
+      ],
+      "tier": "historical",
+      "styles": [
+        "portrait",
+        "brushwork",
+        "oil",
+        "watercolour"
+      ],
+      "enabled": true,
+      "profiles": [
+        {
+          "url": "https://www.metmuseum.org/essays/john-singer-sargent-1856-1925",
+          "kind": "institution",
+          "state": "reference"
+        }
+      ]
+    }
+  ],
+  "page_monitors": [
+    {
+      "id": "korol-site",
+      "name": "Официальный сайт Вячеслава Короленкова",
+      "artist_id": "korolenkov",
+      "lang": "ru",
+      "url": "https://www.korolenkov.art/",
+      "domains": [
+        "korolenkov.art"
+      ],
+      "publisher": "artist-korolenkov",
+      "child_paths": "^/(blog|news|journal|works|exhibitions)(/|$)"
+    },
+    {
+      "id": "mann-events",
+      "name": "Jeremy Mann · Events",
+      "artist_id": "jeremy-mann",
+      "lang": "en",
+      "url": "https://jeremymann.com/events",
+      "domains": [
+        "jeremymann.com"
+      ],
+      "publisher": "artist-jeremy-mann",
+      "child_paths": "^/events/[^/]+",
+      "event_index": true
+    },
+    {
+      "id": "principle-mann",
+      "name": "Principle Gallery · Jeremy Mann",
+      "artist_id": "jeremy-mann",
+      "lang": "en",
+      "url": "https://principlegallery.com/gallery/jeremy-mann/",
+      "domains": [
+        "principlegallery.com"
+      ],
+      "publisher": "principle-mann",
+      "child_paths": "^/(exhibitions|news)/[^/]+"
+    },
+    {
+      "id": "evoke-mann",
+      "name": "EVOKE Contemporary · Jeremy Mann",
+      "artist_id": "jeremy-mann",
+      "lang": "en",
+      "url": "https://evokecontemporary.com/artists/jeremy-mann/",
+      "domains": [
+        "evokecontemporary.com"
+      ],
+      "publisher": "evoke-mann"
+    },
+    {
+      "id": "mad-news",
+      "name": "Mad Charcoal · News",
+      "artist_id": "mad-charcoal",
+      "lang": "en",
+      "url": "https://madcharcoal.com/blogs/news.atom",
+      "domains": [
+        "madcharcoal.com"
+      ],
+      "publisher": "artist-mad-charcoal",
+      "format": "feed"
+    },
+    {
+      "id": "yermolova-exhibitions",
+      "name": "Iryna Yermolova · Exhibitions",
+      "artist_id": "yermolova",
+      "lang": "en",
+      "url": "https://www.irynayermolova.com/exhibitions",
+      "domains": [
+        "irynayermolova.com"
+      ],
+      "publisher": "artist-yermolova",
+      "child_paths": "^/exhibitions/[^/]+",
+      "event_index": true
+    },
+    {
+      "id": "artescape-yermolova",
+      "name": "Art Escape Italy · Iryna Yermolova",
+      "artist_id": "yermolova",
+      "lang": "en",
+      "url": "https://www.artescapeitaly.com/irynayermolova2027",
+      "domains": [
+        "artescapeitaly.com"
+      ],
+      "publisher": "artescape-yermolova",
+      "event_index": true
+    },
+    {
+      "id": "morey-site",
+      "name": "Magdalena Morey · Works",
+      "artist_id": "morey",
+      "lang": "en",
+      "url": "https://magdalenamorey.com/",
+      "domains": [
+        "magdalenamorey.com"
+      ],
+      "publisher": "artist-morey",
+      "child_paths": "^/(blog|news|journal|works|exhibitions)(/|$)"
+    },
+    {
+      "id": "chirun-gallery",
+      "name": "Chirun Gallery",
+      "artist_id": "chirun",
+      "lang": "ru",
+      "url": "https://chirungallery.com/",
+      "domains": [
+        "chirungallery.com"
+      ],
+      "publisher": "artist-chirun",
+      "child_paths": "^/(blog|news|journal|works|exhibitions)(/|$)"
+    },
+    {
+      "id": "bato-catalogue",
+      "name": "Новосибирский государственный художественный музей · Бато Дугаржапов",
+      "artist_id": "dugarzhapov",
+      "lang": "ru",
+      "url": "https://nsartmuseum.ru/exhibitions/id/668",
+      "domains": [
+        "nsartmuseum.ru"
+      ],
+      "publisher": "bato-catalogue"
+    },
+    {
+      "id": "bato-khankhalaev",
+      "name": "Ханхалаев галерея · Бато Дугаржапов",
+      "artist_id": "dugarzhapov",
+      "lang": "ru",
+      "url": "https://khankhalaev.org/artists/bato-dugarzhapov/bio/",
+      "domains": [
+        "khankhalaev.org"
+      ],
+      "publisher": "bato-khankhalaev",
+      "child_paths": "^/artists/bato-dugarzhapov/"
+    },
+    {
+      "id": "lokhmatova-works",
+      "name": "Иветта Лохматова · Официальный сайт",
+      "artist_id": "lokhmatova",
+      "lang": "ru",
+      "url": "https://lokhmatovaivettashop.ru/",
+      "domains": [
+        "lokhmatovaivettashop.ru"
+      ],
+      "publisher": "lokhmatova-works",
+      "child_paths": "^/(exhibitions|news|works|blog)(/|$)"
+    },
+    {
+      "id": "lokhmatova-catalogue",
+      "name": "Галерея Форсаж · Иветта Лохматова",
+      "artist_id": "lokhmatova",
+      "lang": "ru",
+      "url": "https://market.forsage.art/authors/lohmatova-ivetta-viktorovna",
+      "domains": [
+        "market.forsage.art"
+      ],
+      "publisher": "lokhmatova-catalogue"
+    },
+    {
+      "id": "morey-gallery",
+      "name": "Magdalena Morey · Gallery Representation",
+      "artist_id": "morey",
+      "lang": "en",
+      "url": "https://www.magdalenamorey.com/gallery-representation",
+      "domains": [
+        "magdalenamorey.com"
+      ],
+      "publisher": "morey-gallery"
+    },
+    {
+      "id": "makarov-outdoorpainter",
+      "name": "OutdoorPainter · Vitaly Makarov",
+      "artist_id": "makarov",
+      "lang": "en",
+      "url": "https://www.outdoorpainter.com/interview-plein-air-ukrainian-artist-vitaly-makarov/",
+      "domains": [
+        "outdoorpainter.com"
+      ],
+      "publisher": "outdoorpainter"
+    },
+    {
+      "id": "makarov-kmv",
+      "name": "Кавказская здравница · Виталий Макаров",
+      "artist_id": "makarov",
+      "lang": "ru",
+      "url": "https://pravda-kmv.ru/zadacha-hudozhnika-peredat-vpechatlenie/",
+      "domains": [
+        "pravda-kmv.ru"
+      ],
+      "publisher": "makarov-kmv"
+    }
+  ]
+}

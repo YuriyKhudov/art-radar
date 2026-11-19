@@ -1,0 +1,178 @@
+[
+  {
+    "source":"arzamas","url":"https://arzamas.academy/mag/487-serov","reviewed":true,
+    "title":"Как Серов добивался ощущения живого портрета",
+    "summary":"Галина Ельшевская разбирает пять портретов. У Веры Мамонтовой важны открытые светлые мазки, у Иды Рубинштейн — линия и силуэт.",
+    "why":"Сравните, сколько у Серова остаётся от объёма фигуры, когда главным становится её контур.",
+    "rubric":"За картиной","type":"archive","topics":["portrait"],"kind":"article","lang":"ru","access":"free","usefulness":4.9,"originality":4.8
+  },
+  {
+    "source":"culture","url":"https://ar.culture.ru/ru/article/istoriya-portretnogo-zhanra-v-rossii","reviewed":true,
+    "title":"От парсуны до психологического портрета",
+    "summary":"Портал «Артефакт» прослеживает, как менялся портрет в России, от ранних изображений до произведений с выраженным интересом к личности модели.",
+    "why":"Выберите два портрета разных эпох и сравните, что о человеке рассказывают его жест, костюм и фон.",
+    "rubric":"Открытая коллекция","type":"archive","topics":["portrait"],"kind":"article","lang":"ru","access":"free","usefulness":4.5,"originality":4.3
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/publications/khudozhnik-govorit-valentin-serov-o-zhizni-i-ob-iskusstve/","reviewed":true,
+    "title":"Серов о работе над собой и картиной",
+    "summary":"«Лаврус» собрал высказывания Серова о жизни и искусстве. Здесь можно услышать голос самого художника рядом с привычными музейными интерпретациями.",
+    "why":"Хорошее дополнение к разбору портретов, когда хочется понять, как сам автор формулировал своё отношение к живописи.",
+    "rubric":"В мастерской","type":"archive","topics":["portrait","studio"],"kind":"article","lang":"ru","access":"free","usefulness":4.4,"originality":4.5
+  },
+  {
+    "source":"cleveland","url":"https://www.clevelandart.org/art/1952.542","reviewed":true,
+    "title":"«Молодая женщина в тюрбане». Портрет как упражнение",
+    "summary":"Кливлендский музей объясняет, зачем живописцам французской академии давали задания на изображение эмоций и как к этой традиции относится картина.",
+    "why":"Сравните направление взгляда и поворот головы модели. Попробуйте добиться такой же выразительности в быстром портретном этюде.",
+    "rubric":"Практика","type":"archive","topics":["portrait","library"],"kind":"collection","lang":"en","translation":"none","access":"free","usefulness":4.8,"originality":4.7,
+    "image":{"url":"https://openaccess-cdn.clevelandart.org/1952.542/1952.542_web.jpg","license":"CC0","credit":"Жак-Луи Давид. Молодая женщина в тюрбане, Cleveland Museum of Art"}
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/publications/kuindzhi-narrativ/","reviewed":true,
+    "title":"Как у Куинджи светится цвет",
+    "summary":"Елена Федотова объясняет, как Куинджи добивался иллюзии свечения и почему его эффект удивлял даже других пейзажистов.",
+    "why":"Полезный разбор для этюда с одним ярким пятном. Проследите, как окружающие тона меняют его силу.",
+    "rubric":"За картиной","type":"archive","topics":["landscape"],"kind":"article","lang":"ru","access":"free","usefulness":5,"originality":4.9
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/publications/10-kartin-levitana-kotorye-nuzhno-znat/","reviewed":true,
+    "title":"Десять пейзажей Левитана для внимательного просмотра",
+    "summary":"Третьяковская галерея собрала десять работ Левитана. Вместе они показывают, как по-разному художник передавал состояние природы.",
+    "why":"Сравните, сколько места занимает небо в разных работах и как это меняет ощущение пространства.",
+    "rubric":"Практика","type":"archive","topics":["landscape"],"kind":"article","lang":"ru","access":"free","usefulness":4.6,"originality":4.3
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/publications/10-kartin-ivana-shishkina-kotorye-nuzhno-znat/","reviewed":true,
+    "title":"Десять пейзажей Шишкина, от просеки до открытого поля",
+    "summary":"По десяти работам из подборки Третьяковской галереи можно проследить, как меняется пространство у Шишкина в лесных и открытых пейзажах.",
+    "why":"Сравните масштаб дерева на переднем плане и линию горизонта в работах с открытым небом.",
+    "rubric":"Практика","type":"archive","topics":["landscape"],"kind":"article","lang":"ru","access":"free","usefulness":4.4,"originality":4.1
+  },
+  {
+    "source":"rusmuseum","url":"https://rusmuseum.ru/editions/multimedia/virtualnyy-tur-preobrazhennaya-priroda/","reviewed":true,
+    "title":"Виртуальный зал с грозами, радугами и лунным светом",
+    "summary":"Русский музей перенёс в виртуальный тур выставку пейзажей. Залы сгруппированы по природным явлениям, от закатов до гроз.",
+    "why":"В одном зале можно сопоставить, как несколько художников решают одну задачу со светом или погодой.",
+    "rubric":"Открытая коллекция","type":"archive","topics":["landscape","library"],"kind":"collection","lang":"ru","access":"free","usefulness":4.7,"originality":4.6
+  },
+  {
+    "source":"cleveland","url":"https://www.clevelandart.org/art/1916.1044","reviewed":true,
+    "title":"Как Моне написал полуденное солнце в Антибе",
+    "summary":"В музейном разборе «Дома садовника в Антибе» объясняется, как Моне передал яркий свет Средиземноморья густыми мазками насыщенной краски.",
+    "why":"Увеличьте участок между домом и морем и отметьте, как небольшие зелёные мазки меняют ощущение воздуха.",
+    "rubric":"Открытая коллекция","type":"archive","topics":["landscape"],"kind":"collection","lang":"en","translation":"none","access":"free","usefulness":4.9,"originality":4.7,
+    "image":{"url":"https://openaccess-cdn.clevelandart.org/1916.1044/1916.1044_web.jpg","license":"CC0","credit":"Клод Моне. Дом садовника в Антибе, Cleveland Museum of Art"}
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/lectorium/detail/shestoy-vypusk-iz-serii-tretyakovskaya-galereya-khkh-vek-iz-pervykh-ust-alina-teys-restavrator-grafi/","reviewed":true,
+    "title":"Что происходит с рисунком в руках реставратора",
+    "summary":"Алина Тейс рассказывает о реставрации графики и о том, как в Третьяковской галерее менялись правила хранения и показа рисунков. На странице есть текст беседы.",
+    "why":"Пригодится тем, кто хранит или выставляет свои работы на бумаге.",
+    "rubric":"В мастерской","type":"archive","topics":["techniques","films"],"kind":"video","lang":"ru","access":"free","usefulness":4.8,"originality":4.9,
+    "duration":"43 мин 17 с","alternative":"https://rutube.ru/video/263b68a52c8b7d18df0aec2d57e6efab/","alternative_domains":["rutube.ru"],
+    "related_urls":["https://rutube.ru/video/263b68a52c8b7d18df0aec2d57e6efab/","https://www.youtube.com/watch?v=IPVSVk9fzpM"]
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/publications/mastera-vozrozhdeniya-raskryvayut-tayny-restavratsii-/","reviewed":true,
+    "title":"Промывка акварели, очистка листа и другие музейные приёмы",
+    "summary":"Реставраторы Третьяковской галереи показывают, как убирают поверхностные загрязнения, промывают лист и восполняют утраты бумажной массы.",
+    "why":"Понаблюдайте, как реставраторы учитывают хрупкость основы и свойства красочного слоя.",
+    "rubric":"За картиной","type":"archive","topics":["techniques"],"kind":"video","lang":"ru","access":"free","usefulness":4.9,"originality":4.9
+  },
+  {
+    "source":"culture","url":"https://www.culture.ru/themes/256339/master-klassy-po-zhivopisi-akvarel-guash-i-tush","reviewed":true,
+    "title":"Акварель, гуашь и тушь в одной подборке",
+    "summary":"На Культура.РФ собраны мастер-классы по работе с акварелью, гуашью и тушью.",
+    "why":"Выберите два материала и попробуйте один мотив в обоих. Сравните, где удобнее оставить свет бумаги, а где проще положить свет поверх тёмного.",
+    "rubric":"Практика","type":"archive","topics":["techniques","library"],"kind":"collection","lang":"ru","access":"free","usefulness":4.7,"originality":4.1
+  },
+  {
+    "source":"cleveland","url":"https://www.clevelandart.org/art/1934.350","reviewed":true,
+    "title":"Рембрандт у окна. Как устроен печатный штрих",
+    "summary":"На автопортрете Рембрандт сидит у окна, наклонившись над медной пластиной. Кливлендский музей рассказывает, почему мастер выбрал именно это место в комнате.",
+    "why":"На увеличении удобно сравнить свободные штрихи у окна и плотную тень в одежде.",
+    "rubric":"Открытая коллекция","type":"archive","topics":["techniques"],"kind":"collection","lang":"en","translation":"none","access":"free","usefulness":4.8,"originality":4.8,
+    "image":{"url":"https://openaccess-cdn.clevelandart.org/1934.350/1934.350_web.jpg","license":"CC0","credit":"Рембрандт. Автопортрет у окна, Cleveland Museum of Art"}
+  },
+  {
+    "source":"arzamas","url":"https://arzamas.academy/materials/1052","reviewed":true,
+    "title":"Как устроена розовая мастерская Матисса",
+    "summary":"Интерактивный разбор показывает детали «Мастерской художника» и объясняет, почему Матисс позволял себе менять реальный цвет стен. Материал рассчитан на компьютер.",
+    "why":"Возьмите простой интерьерный этюд и попробуйте поменять в нём один большой цветовой массив.",
+    "rubric":"За картиной","type":"archive","topics":["colour","studio"],"kind":"article","lang":"ru","access":"free","usefulness":4.9,"originality":4.8
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/publications/aktualnost-konstantina-istomina/","reviewed":true,
+    "title":"Как заново открывали Константина Истомина",
+    "summary":"Кураторы выставки «Цвет в окне» рассказывают о малоизвестном живописце и педагоге Вхутемаса и о подготовке его ретроспективы.",
+    "why":"Воспользуйтесь репродукциями, чтобы посмотреть, как цвет за окном и в комнате связывает планы.",
+    "rubric":"В мастерской","type":"archive","topics":["colour","discoveries"],"kind":"article","lang":"ru","access":"free","usefulness":4.5,"originality":4.8
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/publications/10-sekretov-masterstva-roberta-falka/","reviewed":true,
+    "title":"Десять наблюдений о мастерстве Роберта Фалька",
+    "summary":"Разбор «Лавруса» посвящён тому, как Фальк работал над живописью и какие приёмы помогали ему добиваться выразительности.",
+    "why":"Выберите одну репродукцию и попробуйте записать, как меняется один оттенок в соседстве с разными цветами.",
+    "rubric":"Практика","type":"archive","topics":["colour","studio"],"kind":"article","lang":"ru","access":"free","usefulness":4.8,"originality":4.6
+  },
+  {
+    "source":"cleveland","url":"https://www.clevelandart.org/art/1958.21","reviewed":true,
+    "title":"Что связывает передний и дальний планы у Сезанна",
+    "summary":"Кливлендский музей обращает внимание на ветвь сосны, которая повторяет склон горы Сент-Виктуар и связывает два плана.",
+    "why":"Проследите переход от тёплой земли к холодной горе и посмотрите, где пятна зелени удерживают композицию.",
+    "rubric":"Открытая коллекция","type":"archive","topics":["colour"],"kind":"collection","lang":"en","translation":"none","access":"free","usefulness":4.8,"originality":4.6,
+    "image":{"url":"https://openaccess-cdn.clevelandart.org/1958.21/1958.21_web.jpg","license":"CC0","credit":"Поль Сезанн. Гора Сент-Виктуар, Cleveland Museum of Art"}
+  },
+  {
+    "source":"culture","url":"https://www.culture.ru/s/ot-dyurera-do-matissa/","reviewed":true,
+    "title":"От Дюрера до Матисса. Прогулка по печатной графике",
+    "summary":"Спецпроект Культура.РФ посвящён западноевропейской печатной графике. Работы можно рассматривать в хронологическом ряду.",
+    "why":"Сопоставьте контур и штрих в разных листах, чтобы найти приём для собственной графики.",
+    "rubric":"Открытая коллекция","type":"archive","topics":["library"],"kind":"collection","lang":"ru","access":"free","usefulness":4.8,"originality":4.4
+  },
+  {
+    "source":"lavrus","url":"https://lavrus.tretyakov.ru/publications/umbriiskaya-dolina/","reviewed":true,
+    "title":"Как передать свежесть утра в пейзаже",
+    "summary":"Мастер-класс Третьяковской галереи предлагает оттолкнуться от «Умбрийской долины» и перевести впечатление от картины в собственную работу.",
+    "why":"Подойдёт для небольшого этюда, в котором важно отделить дальний план от переднего.",
+    "rubric":"Практика","type":"archive","topics":["studio"],"kind":"article","lang":"ru","access":"free","usefulness":4.8,"originality":4.5
+  },
+  {
+    "source":"arzamas","url":"https://arzamas.academy/materials/1366","reviewed":true,
+    "title":"Что почитать об импрессионизме",
+    "summary":"Arzamas предлагает путеводитель по чтению об импрессионизме. Это список книг и пояснений к ним.",
+    "why":"Удобно выбрать следующую книгу по интересующей теме и сохранить её название в свою библиотеку.",
+    "rubric":"Открытая коллекция","type":"archive","topics":["library"],"kind":"article","lang":"ru","access":"free","usefulness":4.3,"originality":4.5
+  },
+  {
+    "source":"cleveland","url":"https://www.clevelandart.org/art/1916.1043","reviewed":true,
+    "title":"Слои пастели и шесть листов бумаги у Дега",
+    "summary":"В «Танцовщицах» Дега соединил шесть листов и нарастил цвет слоями пастели. На увеличении ещё видны стыки бумаги.",
+    "why":"Сравните, где цвет лежит плотным слоем, а где через него проступает подстилка. Это можно повторить на небольшом пастельном этюде.",
+    "rubric":"За картиной","type":"archive","topics":["discoveries"],"kind":"collection","lang":"en","translation":"none","access":"free","usefulness":4.8,"originality":4.8,
+    "image":{"url":"https://openaccess-cdn.clevelandart.org/1916.1043/1916.1043_web.jpg","license":"CC0","credit":"Эдгар Дега. Танцовщицы, Cleveland Museum of Art"}
+  },
+  {
+    "source":"colossal","url":"https://www.thisiscolossal.com/2026/11/juliet-schreckinger-limitless-sea-ink-graphite-drawings/","reviewed":true,
+    "title":"Джульет Шреккингер рисует море тушью и графитом",
+    "summary":"Colossal показывает графику из серии Limitless Sea. На листах Шреккингер морские животные помогают друг другу, а свет пробивается через туман.",
+    "why":"Посмотрите, как художница оставляет немного света вокруг фонарей и маяков. Это хороший референс для тонального рисунка.",
+    "rubric":"Выставки и открытия","type":"news","published":"2026-11-17T15:32:42+00:00","topics":["techniques","discoveries"],"kind":"article","lang":"en","translation":"none","access":"free","usefulness":4.7,"originality":4.9
+  },
+  {
+    "source":"jacksons","url":"https://www.jacksonsart.com/blog/2026/11/16/behind-the-movement-the-hudson-river-school/","reviewed":true,
+    "title":"Пейзаж по мотивам школы реки Гудзон",
+    "summary":"Статья знакомит с живописцами школы реки Гудзон и заканчивается практическим показом работы маслом в духе их пейзажей.",
+    "why":"Удобно сопоставить музейные примеры и ход современного этюда, прежде чем пробовать похожую композицию.",
+    "rubric":"Практика","type":"news","published":"2026-11-16T17:39:28+00:00","topics":["landscape"],"kind":"article","lang":"en","translation":"none","access":"free","usefulness":4.8,"originality":4.5
+  },
+  {
+    "source":"tretyakov-video","url":"https://rutube.ru/video/f19c760af996dbbd88ec2a2cee9125e4/","reviewed":true,
+    "title":"Борисов-Мусатов и гармония приглушённых цветов",
+    "summary":"Куратор Евгения Илюхина ведёт по выставке Третьяковской галереи и останавливается у ключевых картин художника.",
+    "why":"Посмотрите, как близкие по тону фигуры и фон собираются в один силуэт. Этот приём удобно попробовать в небольшом этюде.",
+    "rubric":"Искусство в кадре","type":"archive","published":"2026-11-05T15:00:38+00:00","topics":["films","discoveries"],"kind":"video","lang":"ru","access":"free","usefulness":4.6,"originality":4.7,
+    "duration":"14 мин 20 с","related_urls":["https://www.youtube.com/watch?v=ntSZ6XWFb1A"]
+  }
+]

@@ -1,0 +1,123 @@
+{
+  "publish_time": "19:00",
+  "interval_days": 3,
+  "news_days": 7,
+  "russian_share": 0.7,
+  "minimum_score": 68,
+  "extra_score": 76,
+  "archive_score": 90,
+  "require_video_duration": true,
+  "min_items": 3,
+  "max_items": 4,
+  "theme_every": 0,
+  "previously_published": [],
+  "monthly_mix": {"studio": 0.30, "practice": 0.25, "news": 0.20, "people": 0.15, "archive": 0.10},
+  "cover_exclusions": ["cleveland"],
+  "image_domains": ["images.metmuseum.org", "openaccess-cdn.clevelandart.org"],
+  "player_domains": ["rutube.ru", "youtube-nocookie.com"],
+  "themes": {
+    "portrait": {
+      "title": "Как смотреть на портрет",
+      "intro": "Фон, поза и несколько линий меняют впечатление о человеке в кадре.",
+      "question": "Что вы замечаете в портрете первым: взгляд модели, позу или то, как написана фигура?"
+    },
+    "landscape": {
+      "title": "Свет в пейзаже",
+      "intro": "В этом выпуске — сумерки, лунный свет и яркое солнце. У каждого художника свой способ показать, чем наполнен воздух."
+    },
+    "techniques": {
+      "title": "Бумага, оттиск и красочный слой",
+      "intro": "Сегодня разглядываем следы инструментов и то, как выбор материала меняет рисунок.",
+      "question": "Какая техника сильнее всего изменила ваш привычный способ рисовать?"
+    },
+    "colour": {
+      "title": "Как цвет держит картину",
+      "intro": "Фон, соседство оттенков и небольшие цветовые акценты могут держать всю картину."
+    },
+    "studio": {
+      "title": "В гостях у художников",
+      "intro": "Заглянем в мастерские и посмотрим, как художники начинают работу и принимают решения по ходу."
+    },
+    "films": {
+      "title": "Кино о художниках",
+      "intro": "Время на несколько фильмов и разговоров о том, как устроена работа художника."
+    },
+    "library": {
+      "title": "Бесплатная библиотека художника",
+      "intro": "Сохраняем открытые коллекции, книги и материалы, к которым можно возвращаться за референсами."
+    },
+    "selling": {
+      "title": "Как продавать свои картины",
+      "intro": "Подборка о том, как подготовить работу к показу, продаже и отправке."
+    },
+    "discoveries": {
+      "title": "Художественные открытия",
+      "intro": "Образцы работ и исследования, которые помогают заметить знакомое по-новому."
+    }
+  },
+  "sources": [
+    {"id":"tanr","name":"The Art Newspaper Russia","lang":"ru","priority":4.8,"enabled":true,"domains":["theartnewspaper.ru"],"feed":"https://www.theartnewspaper.ru/rss/","feed_alternate":"https://www.theartnewspaper.ru/rss","feed_domains":["theartnewspaper.ru"]},
+    {"id":"artmoskovia","name":"АртМосковия","lang":"ru","priority":3.9,"enabled":true,"domains":["artmoskovia.ru"],"feed":"https://artmoskovia.ru/feed","feed_domains":["artmoskovia.ru"]},
+    {"id":"artuzel","name":"ART Узел","lang":"ru","priority":4.4,"enabled":true,"domains":["artuzel.com"],"feed":"https://artuzel.com/rss.xml","feed_domains":["artuzel.com"]},
+    {"id":"iskusstvo-info","name":"Искусство","lang":"ru","priority":4.5,"enabled":true,"domains":["iskusstvo-info.ru"],"feed":"https://iskusstvo-info.ru/feed/","feed_domains":["iskusstvo-info.ru"]},
+    {"id":"afisha","name":"Афиша Daily","lang":"ru","priority":4.1,"general_media":true,"enabled":true,"domains":["daily.afisha.ru"],"feed":"https://daily.afisha.ru/rss/","feed_domains":["daily.afisha.ru"]},
+    {"id":"kommersant","name":"Коммерсантъ · Культура","lang":"ru","priority":4.3,"general_media":true,"enabled":true,"domains":["kommersant.ru"],"feed":"https://www.kommersant.ru/rss/section-culture.xml","feed_domains":["kommersant.ru"]},
+    {"id":"tretyakov-video","publisher":"tretyakov","name":"Третьяковская галерея","lang":"ru","priority":4.7,"enabled":true,"domains":["youtube.com","youtu.be","rutube.ru"],"feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCCJR2fHtwpHs5eYirnbCNQA","feed_domains":["youtube.com"]},
+    {"id":"americaart","name":"АМЕРИКА АРТ","lang":"ru","priority":4.4,"enabled":true,"domains":["youtube.com","youtu.be"],"feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCFwhVewMQbPKXD99Frzuvpw","feed_domains":["youtube.com"],"direction":"people"},
+    {"id":"bazanova-yt","publisher":"bazanova","name":"Ольга Базанова · YouTube","lang":"ru","priority":4.3,"creator":true,"enabled":true,"domains":["youtube.com","youtu.be"],"feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCJYRcY7Km5v041tBTLu-SJQ","feed_domains":["youtube.com"],"topics":["studio","colour","landscape"]},
+    {"id":"dari-yt","publisher":"dari","name":"Дари Арт · YouTube","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["youtube.com","youtu.be"],"feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCZ_sZmJcADBgqTGucG-IVUQ","feed_domains":["youtube.com"],"topics":["studio","colour","techniques"]},
+    {"id":"saharov-yt","publisher":"saharov","name":"Игорь Сахаров · YouTube","lang":"ru","priority":4.3,"creator":true,"enabled":true,"domains":["youtube.com","youtu.be"],"feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UC1QXVEy4PZrD77fuh9NMS0Q","feed_domains":["youtube.com"],"topics":["studio","colour","techniques"]},
+    {"id":"rizhkin-yt","publisher":"rizhkin","name":"Александр Рыжкин · YouTube","lang":"ru","priority":4.6,"creator":true,"enabled":true,"domains":["youtube.com","youtu.be"],"feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UC90UpMOnWwp5c80f_9so1IQ","feed_domains":["youtube.com"],"topics":["portrait","techniques"]},
+    {"id":"zubova-yt","name":"Татьяна Зубова · Zartschool","lang":"ru","priority":4.3,"creator":true,"enabled":true,"domains":["youtube.com","youtu.be"],"feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCG3b7Ax_bUPpffoLZfQ2yog","feed_domains":["youtube.com"],"topics":["colour","techniques","landscape"]},
+    {"id":"bazanova-rt","publisher":"bazanova","name":"Ольга Базанова · RUTUBE","lang":"ru","priority":4.3,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":44280368,"topics":["studio","colour","landscape"]},
+    {"id":"saharov-rt","publisher":"saharov","name":"Игорь Сахаров · RUTUBE","lang":"ru","priority":4.3,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":36399258,"topics":["studio","colour","techniques"]},
+    {"id":"rizhkin-rt","publisher":"rizhkin","name":"Александр Рыжкин · RUTUBE","lang":"ru","priority":4.6,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":25821531,"topics":["portrait","techniques","studio"]},
+    {"id":"yuriev-rt","name":"Руслан Юрьев · RUTUBE","lang":"ru","priority":4,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":24870013,"topics":["studio","colour","landscape"]},
+    {"id":"enterclass-rt","name":"Enterclass · RUTUBE","lang":"ru","priority":4.3,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":24470166,"topics":["studio","techniques","colour"]},
+    {"id":"dumskaya-rt","name":"Ольга Думская · RUTUBE","lang":"ru","priority":4.4,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":29370604,"topics":["studio","landscape"]},
+    {"id":"zubareva-rt","name":"Екатерина Зубарева · RUTUBE","lang":"ru","priority":4.2,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":71903654,"topics":["techniques","colour"]},
+    {"id":"evsyukova-rt","name":"Юлия Евсюкова · RUTUBE","lang":"ru","priority":4.2,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":26574151,"topics":["studio","techniques"]},
+    {"id":"okoshko-rt","name":"Оксана Кудряшова · RUTUBE","lang":"ru","priority":4.2,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":42279284,"topics":["landscape","techniques"]},
+    {"id":"lectoroom-rt","publisher":"lectoroom","name":"Lectoroom · RUTUBE","lang":"ru","priority":4.3,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":35781230,"topics":["techniques","colour"]},
+    {"id":"fler-rt","publisher":"fler","name":"Александра Малыгина · RUTUBE","lang":"ru","priority":4.4,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":30624066,"topics":["studio","techniques"]},
+    {"id":"onyanova-rt","name":"Екатерина Онянова · RUTUBE","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":31116979,"topics":["colour","techniques"]},
+    {"id":"dari-rt","publisher":"dari","name":"Дари Арт · RUTUBE","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":1063391,"topics":["studio","colour","techniques"]},
+    {"id":"bobrova-rt","name":"Наталья Боброва · RUTUBE","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":43462786,"topics":["studio","techniques"]},
+    {"id":"kulik-rt","name":"Красная мастерская · Анна Кулик","lang":"ru","priority":4.4,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":44959952,"direction":"people","topics":["studio","techniques","films"]},
+    {"id":"tretyakov-rt","publisher":"tretyakov","name":"Третьяковская галерея · RUTUBE","lang":"ru","priority":4.7,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":25592111,"direction":"people","topics":["films"]},
+    {"id":"rusmuseum-rt","publisher":"rusmuseum","name":"Русский музей · RUTUBE","lang":"ru","priority":4.5,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":24627191,"direction":"people","topics":["films"]},
+    {"id":"artunion-rt","name":"Санкт-Петербургский союз художников","lang":"ru","priority":4.6,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":35264725,"direction":"people","topics":["studio","films"]},
+    {"id":"yourartmuse-rt","name":"Your Art Muse · RUTUBE","lang":"ru","priority":4,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":33188887,"direction":"people","topics":["studio","films"]},
+    {"id":"sagadat-rt","name":"Артем Сагадат · RUTUBE","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":39015817,"topics":["studio","films"]},
+    {"id":"ecorche-rt","name":"В стиле экорше · RUTUBE","lang":"ru","priority":4.5,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":75386801,"direction":"people","topics":["films","studio"]},
+    {"id":"artpatrol-rt","name":"ARTПАТРУЛЬ · RUTUBE","lang":"ru","priority":4.4,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":23469274,"direction":"people","topics":["films","studio"]},
+    {"id":"kaminskaya-rt","name":"Ольга Каминская · RUTUBE","lang":"ru","priority":4.3,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":24818296,"topics":["studio","techniques","colour"]},
+    {"id":"trubnikova-rt","name":"Татьяна Трубникова · RUTUBE","lang":"ru","priority":4.2,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":25259195,"topics":["studio","techniques"]},
+    {"id":"elenblack-rt","name":"Elen Black · RUTUBE","lang":"ru","priority":4.2,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":36959880,"topics":["portrait","colour","studio"]},
+    {"id":"luna-rt","name":"Luna_art · RUTUBE","lang":"ru","priority":4,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":632767,"topics":["colour","techniques"]},
+    {"id":"khidaeva-rt","name":"Ксения Хидаева · RUTUBE","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["rutube.ru"],"connector":"rutube","channel":34638533,"topics":["studio","colour"]},
+    {"id":"dari-vk","publisher":"dari","name":"Дари Арт · VK Видео","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","owner":-72292077,"topics":["studio","colour","techniques"]},
+    {"id":"rizhkin-vk","publisher":"rizhkin","name":"Александр Рыжкин · VK Видео","lang":"ru","priority":4.6,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","screen_name":"rizhkin","topics":["portrait","techniques"]},
+    {"id":"fler-vk","publisher":"fler","name":"Александра Малыгина · VK Видео","lang":"ru","priority":4.4,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","screen_name":"flers_art","topics":["studio","techniques"]},
+    {"id":"arzamas","name":"Arzamas","lang":"ru","priority":5,"enabled":true,"domains":["arzamas.academy"]},
+    {"id":"lavrus","publisher":"tretyakov","name":"Лаврус · Третьяковская галерея","lang":"ru","priority":5,"enabled":true,"domains":["lavrus.tretyakov.ru"]},
+    {"id":"culture","name":"Культура.РФ","lang":"ru","priority":4.7,"enabled":true,"domains":["culture.ru","ar.culture.ru"]},
+    {"id":"rusmuseum","name":"Русский музей","lang":"ru","priority":5,"enabled":true,"domains":["rusmuseum.ru","virtual.rusmuseumvrm.ru","rusmuseumvrm.ru","app.rusmuseum.ru"]},
+    {"id":"pushkin","name":"Пушкинский музей","lang":"ru","priority":5,"enabled":true,"domains":["pushkinmuseum.art"]},
+    {"id":"hermitage","name":"Государственный Эрмитаж","lang":"ru","priority":5,"enabled":true,"domains":["hermitagemuseum.org","rutube.ru"]},
+    {"id":"artchive","name":"Артхив","lang":"ru","priority":4,"enabled":false,"domains":["artchive.ru"]},
+    {"id":"artguide","name":"Артгид","lang":"ru","priority":4,"enabled":false,"domains":["artguide.com"]},
+    {"id":"colossal","name":"Colossal","lang":"en","priority":4.4,"enabled":false,"domains":["thisiscolossal.com"],"feed":"https://www.thisiscolossal.com/feed/","feed_domains":["thisiscolossal.com"]},
+    {"id":"jacksons","name":"Jackson’s Art Blog","lang":"en","priority":4.5,"enabled":false,"domains":["jacksonsart.com"],"feed":"https://www.jacksonsart.com/blog/feed/","feed_domains":["jacksonsart.com"]},
+    {"id":"art21","name":"Art21","lang":"en","priority":4.6,"enabled":false,"domains":["art21.org"],"feed":"https://art21.org/feed/","feed_domains":["art21.org"]},
+    {"id":"louisiana","name":"Louisiana Channel","lang":"en","priority":4.6,"enabled":true,"domains":["channel.louisiana.dk"]},
+    {"id":"met","name":"The Metropolitan Museum of Art","lang":"en","priority":5,"enabled":true,"domains":["metmuseum.org"]},
+    {"id":"cleveland","name":"Cleveland Museum of Art","lang":"en","priority":5,"enabled":true,"domains":["clevelandart.org"]},
+    {"id":"nga","name":"National Gallery of Art","lang":"en","priority":5,"enabled":true,"domains":["nga.gov"]},
+    {"id":"nationalgallery","name":"The National Gallery, London","lang":"en","priority":5,"enabled":true,"domains":["nationalgallery.org.uk"]},
+    {"id":"moma","name":"MoMA","lang":"en","priority":4.9,"enabled":false,"domains":["moma.org","press.moma.org"],"feed":"https://press.moma.org/feed/","feed_domains":["press.moma.org"]},
+    {"id":"tate","name":"Tate","lang":"en","priority":4.8,"enabled":true,"domains":["tate.org.uk"]},
+    {"id":"googlearts","name":"Google Arts & Culture","lang":"en","priority":4.6,"enabled":false,"domains":["artsandculture.google.com"]},
+    {"id":"proko","name":"Proko","lang":"en","priority":4.5,"enabled":true,"domains":["proko.com"]}
+  ]
+}

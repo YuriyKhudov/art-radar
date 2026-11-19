@@ -1,0 +1,342 @@
+import datetime as dt
+import io
+import sqlite3
+import tempfile
+import unittest
+import urllib.error
+from contextlib import closing, redirect_stdout
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+from radar import editorial, editorial_sources as sources, telegram_journal as journal
+
+NOW = dt.datetime(2026, 11, 18, 19, tzinfo=journal.MOSCOW)
+CONFIG = sources.read(sources.ROOT / "sources.json")
+ARCHIVE = [item for item in sources.read(sources.ROOT / "materials.json") if item["type"] == "archive"]
+CREDS = {"ART_RADAR_JOURNAL_PUBLISH": "1", "JOURNAL_TELEGRAM_TOKEN": "example",
+         "JOURNAL_TELEGRAM_CHAT": "-123", "JOURNAL_TELEGRAM_TOPIC": "456"}
+
+
+def fresh(at=NOW):
+    fixtures = [
+        ("bazanova-rt", "Как писать небо маслом", "В уроке художница объясняет, как смешивает тёплые краски для облаков.",
+         "video", "https://rutube.ru/video/a/", 540),
+        ("tanr", "В Перми открылась выставка графики", "На выставке собрали рисунки пяти современных художников и отдельную серию офортов.",
+         "article", "https://theartnewspaper.ru/posts/a", None),
+        ("enterclass-rt", "Пленэр: работа над весенним этюдом", "Художник работает с натуры маслом и записывает весь процесс в своей мастерской.",
+         "video", "https://rutube.ru/video/b/", 880),
+        ("kulik-rt", "Интервью с художницей о новой серии работ", "В разговоре художница рассказывает о живописи и о работе над новой серией.",
+         "video", "https://rutube.ru/video/c/", 1800),
+    ]
+    return [{"source": source, "url": url, "title": title, "evidence": evidence, "kind": kind,
+             "published": at.isoformat(), "provenance": "Тестовый источник", **sources.duration(seconds)}
+            for source, title, evidence, kind, url, seconds in fixtures]
+
+
+class EditorialTest(unittest.TestCase):
+    def test_ordinary_issue_uses_fresh_material_from_distinct_publishers(self):
+        raw = fresh()
+        same_publisher = {**raw[0], "source": "bazanova-yt", "url": "https://youtu.be/ntSZ6XWFb1A",
+                          "title": "Урок акварели о смешении красок"}
+        picked, issue = journal.prepare([*ARCHIVE, *raw, same_publisher], CONFIG, [], NOW, None, 1, verify=False)
+        self.assertEqual(len(picked), 4)
+        self.assertEqual(len({card.publisher for card in picked}), 4)
+        self.assertEqual({card.direction for card in picked}, {"studio", "practice", "news", "people"})
+        self.assertIn("18.11.2026", issue["html"])
+        self.assertIn("9:00", issue["html"])
+        self.assertNotIn("Попробуйте", issue["html"])
+        self.assertLess(editorial.length(issue["html"]), 4096)
+        self.assertFalse(journal.prepare(ARCHIVE, CONFIG, [], NOW, None, 1, verify=False)[0])
+
+    def test_recency_boundary_and_marketing(self):
+        raw = fresh()
+        promo = {**raw[0], "title": "Цветная пятница: скидки до 70% на уроки рисования"}
+        teaser = {**raw[0], "seconds": 70, "access_evidence": "Смотрите полный выпуск в профиле"}
+        old = {**raw[1], "published": (NOW - dt.timedelta(days=8)).isoformat()}
+        future = {**raw[2], "published": (NOW + dt.timedelta(minutes=10)).isoformat()}
+        picked, report = editorial.assess([promo, teaser, old, future], CONFIG, NOW)
+        self.assertFalse(picked)
+        self.assertEqual([r["decision"] for r in report[:2]], ["Рекламный или партнёрский материал"] * 2)
+        self.assertIn("семидневного", report[2]["decision"])
+        self.assertIn("ещё не наступила", report[3]["decision"])
+
+    def test_monthly_history_prefers_other_publishers_for_similar_cards(self):
+        raw = fresh()
+        rival = {**raw[0], "source": "rizhkin-rt", "url": "https://rutube.ru/video/new/",
+                 "title": "Урок живописи с кистью и красками"}
+        history = [{**raw[0], "title": f"Старый {i} выпуск из мастерской", "direction": "practice",
+                    "url": f"https://rutube.ru/video/old{i}/", "_issued_at": NOW.isoformat()} for i in range(5)]
+        candidates, _ = editorial.assess([raw[0], rival], CONFIG, NOW)
+        seen = []
+        editorial.select(candidates, CONFIG, verify=lambda card: seen.append(card.publisher) or True,
+                         history=history, now=NOW)
+        self.assertEqual(seen[0], "rizhkin")
+
+    def test_age_deadline_and_unknown_captions(self):
+        article = {**ARCHIVE[0], "type": "news", "published": "2026-10-01T12:00:00+03:00"}
+        expired = {**ARCHIVE[1], "deadline": "2026-11-17"}
+        video = {**next(item for item in ARCHIVE if item["lang"] == "en"), "kind": "video"}
+        selected, report = editorial.assess([article, expired, video], CONFIG, NOW)
+        self.assertEqual(selected, [])
+        self.assertIn("Материал вне семидневного", report[0]["decision"])
+        self.assertIn("Срок подачи", report[1]["decision"])
+        self.assertIn("не проверено", report[2]["decision"])
+
+    def test_link_failures_excluded_and_recorded(self):
+        broken, *other_items = fresh()
+        with patch.object(journal, "check", side_effect=lambda url, domains, **kw: url != broken["url"]):
+            picked, report = journal.prepare([broken, *other_items], CONFIG, [], NOW, None, 1, verify=True)
+        self.assertGreaterEqual(len(picked), 3)
+        self.assertTrue(any(item["url"] == broken["url"] and "сетевую" in item["decision"]
+                            for item in report["items"]))
+
+    def test_normalized_links_title_fingerprint_and_story_alias(self):
+        self.assertEqual(sources.canonical("https://www.example.com/a/?utm_medium=rss#part"), "https://example.com/a")
+        self.assertEqual(sources.canonical("https://youtu.be/ntSZ6XWFb1A?si=track"),
+                         sources.canonical("https://www.youtube.com/watch?v=ntSZ6XWFb1A"))
+        item = {**ARCHIVE[0], "title": "Музей показывает рисунки Петрова из ранних альбомов", "story": "retrospective"}
+        old = {**item, "title": "Музей показывает рисунки Петрова из ранних альбомов впервые",
+               "url": ARCHIVE[1]["url"], "story": None}
+        other_language = {**old, "title": "Petrov's notebooks", "story": "retrospective"}
+        alias = {**other_language, "story": None, "related_urls": [item["url"]]}
+        for variant in [old, other_language, alias]:
+            with self.subTest(variant=variant):
+                cards, report = editorial.assess([item], CONFIG, NOW, [variant])
+                self.assertFalse(cards)
+                self.assertIn("уже опубликован", report[0]["decision"])
+
+    def test_title_only_and_advertising_are_held(self):
+        article = {"source": "tanr", "url": "https://theartnewspaper.ru/posts/test", "title": "Реставрация картины",
+                   "kind": "article"}
+        ad = {**article, "evidence": "Партнёрский материал о живописи. " * 5}
+        _, report = editorial.assess([article, ad], CONFIG, NOW)
+        self.assertEqual([row["decision"] for row in report],
+                         ["Недостаточно содержательного описания источника", "Рекламный или партнёрский материал"])
+
+    def test_rejects_prior_editorial_regressions_and_admits_meaningful_short(self):
+        base = fresh()[0]
+        cases = [
+            {**base, "title": "Итоги года без мужа 🍁 Влог + рисование"},
+            {**base, "title": "Рисуем кресло в Procreate"},
+            {**base, "title": "Торжественное открытие выставки «Осень 2026»"},
+            sources.entry({"id": base["source"]}, url=base["url"], title=base["title"], key="promo", kind="video",
+                          text="В кадре кисти и эскиз платья.\nРаспродажа курса открыта до пятницы, мест осталось мало.\n"
+                               "Введите промокод при оплате и получите скидку на все уроки.",
+                          date=NOW.isoformat(), origin="Тестовый источник"),
+            {**base, "seconds": 51, "duration": "0:51", "title": "Неодинаковость. Фрагмент из курса «Гуашь и солнце»",
+             "access_evidence": "Полностью курс художника по ссылке. Симметрия и похожесть мазков портят рисунок."},
+        ]
+        picked, report = editorial.assess(cases, CONFIG, NOW)
+        self.assertFalse(picked)
+        self.assertEqual([row["decision"] for row in report], [
+            "Личный сюжет занимает главное место", "Упражнение по цифровому инструменту вне основной темы",
+            "Церемония вместо разбора искусства", "Рекламный или партнёрский материал", "Рекламный или партнёрский материал"])
+        short = {**base, "seconds": 29, "duration": "0:29", "title": "Мазок мастихином по сырому маслу",
+                 "evidence": "В кадре художница показывает, как одним мазком положить свет на полотно мастихином."}
+        unknown = {key: value for key, value in short.items() if key not in {"seconds", "duration"}}
+        for item in [short, unknown]:
+            cards, _ = editorial.assess([item], CONFIG, NOW)
+            self.assertEqual(len(cards), 1)
+        text, _ = editorial.render(editorial.assess([unknown], CONFIG, NOW)[0], CONFIG)
+        self.assertNotIn("длительность", text)
+
+    def test_verified_selection_replays_without_rechecking_network(self):
+        urls = fresh()
+        network = Mock(side_effect=lambda url, domains, image: url != urls[0]["url"])
+        first = journal.LinkChecks(verify=network)
+        initial = journal.prepare(urls, CONFIG, [], NOW, None, 1, verify=first)[1]
+        self.assertGreaterEqual(network.call_count, 3)
+        second = journal.LinkChecks(replay=first.snapshot(), verify=Mock(side_effect=AssertionError))
+        self.assertEqual(journal.prepare(urls, CONFIG, [], NOW, None, 1, verify=second)[1], initial)
+
+    def test_uses_artistic_chapters_instead_of_opening_pitch(self):
+        item = {**fresh()[0], "evidence": "Посмотрите видео, о котором я рассказывала в ролике! "
+                                        "00:00 — Как выстраивать колорит в серой и монохромной природе? "
+                                        "01:00 — Внутреннее ощущение цвета и тональные отношения больших масс."}
+        picked, _ = editorial.assess([item], CONFIG, NOW)
+        self.assertIn("тональные отношения", picked[0].item["summary"])
+        self.assertNotIn("Посмотрите видео", picked[0].item["summary"])
+
+    def test_rutube_reads_published_time_duration_and_ignores_paid_or_other_author(self):
+        record = {"id": "0123456789abcdef0123456789abcdef", "title": "Урок живописи",
+                  "description": "Подпишитесь на соцсети\nВ уроке показана работа художника с тремя оттенками красного.",
+                  "author": {"id": 99}, "publication_ts": "2026-11-18T15:01:00",
+                  "created_ts": "2020-01-01T15:01:00", "duration": 3726}
+        rows = list(sources.rutube_entries({"results": [record, {**record, "is_paid": True},
+                                                       {**record, "author": {"id": 91}}]},
+                                           {"id": "rt", "channel": 99}))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["duration"], "1:02:06")
+        self.assertEqual(rows[0]["published"], "2026-11-18T15:01:00+03:00")
+        self.assertNotIn("Подпишитесь", rows[0]["evidence"])
+        self.assertEqual(sources.duration("PT1H2M6S"), {"seconds": 3726, "duration": "1:02:06"})
+
+    def test_feed_is_present_on_its_own_domain(self):
+        raw = b"""<rss version="2.0"><channel>
+        <item><title>Artwork</title><link>https://example.org/work</link>
+        <guid>abc</guid><pubDate>Wed, 18 Nov 2026 15:00:00 +0000</pubDate></item>
+        <item><title>Foreign link</title><link>https://untrusted.invalid/work</link></item>
+        </channel></rss>"""
+        rows = list(sources.feed_entries(raw, {"id": "example", "domains": ["example.org"]}))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["feed_id"], "abc")
+        self.assertEqual(rows[0]["published"], "2026-11-18T15:00:00+00:00")
+
+
+class JournalTest(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.addCleanup(self.folder.cleanup)
+        self.path = Path(self.folder.name) / "journal.sqlite3"
+        self.config = {**CONFIG, "theme_every": 0}
+        self.quiet = redirect_stdout(io.StringIO())
+        self.quiet.__enter__()
+        self.addCleanup(self.quiet.__exit__, None, None, None)
+
+    def store(self):
+        return closing(sqlite3.connect(self.path))
+
+    def test_schedule_uses_local_day_and_time(self):
+        last = "2026-11-15T20:04:00+03:00"
+        hour = dt.time(19)
+        self.assertFalse(journal.due(NOW - dt.timedelta(minutes=1), last, hour, 3))
+        self.assertFalse(journal.due(NOW - dt.timedelta(days=1), last, hour, 3))
+        self.assertTrue(journal.due(NOW.astimezone(dt.timezone.utc), last, hour, 3))
+        self.assertFalse(journal.due(NOW, last, hour, 3, "2026-11-18"))
+
+    def test_daily_storage_survives_failed_feeds(self):
+        article = {**ARCHIVE[0], "url": "https://arzamas.academy/mag/487-serov?utm_source=test"}
+        success = ([article], [{"source": "arzamas", "status": "ok", "count": 1}])
+        error = ([], [{"source": "arzamas", "status": "TimeoutError", "count": 0}])
+        with self.store() as conn, patch.object(sources, "collect", side_effect=[success, error, success]) as collect:
+            state = journal.Journal(conn)
+            self.assertTrue(state.daily(self.config, NOW))
+            self.assertFalse(state.daily(self.config, NOW))
+            self.assertTrue(state.daily(self.config, NOW + dt.timedelta(days=1)))
+            self.assertEqual(state.setting("collected_on"), "2026-11-18")
+            self.assertEqual(state.items(), [article])
+            self.assertTrue(state.daily(self.config, NOW + dt.timedelta(days=1)))
+            self.assertEqual(len(state.items()), 1)
+            self.assertEqual(collect.call_count, 3)
+
+    def test_success_persists_state_before_send_and_blocks_restarts(self):
+        def send(*_):
+            with self.store() as conn:
+                self.assertIsNotNone(journal.Journal(conn).clock()[2])
+            self.assertEqual(persist.call_count, 2)
+            return 123
+
+        persist = Mock()
+        with (patch.dict(journal.os.environ, CREDS, clear=True), patch.object(journal, "now_moscow", return_value=NOW),
+              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
+              patch.object(journal, "send", side_effect=send) as transport):
+            for _ in range(2):
+                with self.store() as conn:
+                    journal.scheduled(journal.Journal(conn), self.config, fresh(), persist)
+            with self.store() as conn:
+                state = journal.Journal(conn)
+                self.assertEqual(state.clock(), (NOW.isoformat(), 1, None))
+                self.assertGreaterEqual(len(state.history()), 3)
+            transport.assert_called_once()
+
+    def test_ambiguous_delivery_blocks_retry_until_reconciled(self):
+        with (patch.dict(journal.os.environ, CREDS, clear=True), patch.object(journal, "now_moscow", return_value=NOW) as clock,
+              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
+              patch.object(journal, "send", side_effect=RuntimeError("Timeout")) as transport):
+            with self.store() as conn, self.assertRaises(RuntimeError):
+                journal.scheduled(journal.Journal(conn), self.config, fresh(), Mock())
+            clock.return_value = NOW + dt.timedelta(days=4)
+            with self.store() as conn:
+                state = journal.Journal(conn)
+                journal.scheduled(state, self.config, fresh(), Mock())
+                state.resolve(state.clock()[2], 130)
+                self.assertEqual(state.clock(), (NOW.isoformat(), 1, None))
+            transport.assert_called_once()
+
+    def test_disabled_publish_does_not_need_token_or_touch_telegram(self):
+        with (self.store() as conn, patch.dict(journal.os.environ, {}, clear=True),
+              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "send") as transport):
+            state = journal.Journal(conn)
+            journal.scheduled(state, self.config, fresh(), Mock())
+            self.assertEqual(state.clock(), (None, 0, None))
+            transport.assert_not_called()
+
+    def test_empty_selection_skips_day_and_never_tries_to_catch_up(self):
+        with (self.store() as conn, patch.dict(journal.os.environ, CREDS, clear=True),
+              patch.object(journal, "now_moscow", return_value=NOW) as clock,
+              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
+              patch.object(journal, "send", return_value=123) as transport):
+            state = journal.Journal(conn)
+            journal.scheduled(state, self.config, [], Mock())
+            journal.scheduled(state, self.config, fresh(), Mock())
+            transport.assert_not_called()
+            clock.return_value = NOW + dt.timedelta(days=9)
+            journal.scheduled(state, self.config, fresh(clock.return_value), Mock())
+            transport.assert_called_once()
+
+    def test_telegram_error_never_prints_secret(self):
+        with patch.object(journal.urllib.request, "urlopen", side_effect=urllib.error.URLError("hidden-token")):
+            with self.assertRaisesRegex(RuntimeError, "^Telegram не подтвердил"):
+                journal.send({"html": "Испытание", "cover": None}, "hidden-token", "-1", "1")
+
+    def test_private_delivery_reuses_bot_credentials_has_no_topic_and_does_not_repeat(self):
+        test_db = self.path.with_name("private-test.sqlite3")
+        payload = {"issues": [{"html": "<b>Тест</b>", "cover": {"native": True, "url": "https://example.org/art"}}],
+                   "verified_links": True}
+        env = {"TELEGRAM_BOT_TOKEN": "existing-token", "ART_RADAR_TEST_CHAT_ID": "42", "TELEGRAM_CHAT_ID": "-123"}
+
+        def fake_telegram(request, timeout):
+            self.assertIn("/botexisting-token/", request.full_url)
+            self.assertIn(b"chat_id=42", request.data)
+            self.assertNotIn(b"message_thread_id", request.data)
+            if request.full_url.endswith("/getChat"):
+                return io.BytesIO(b'{"ok":true,"result":{"id":42,"type":"private"}}')
+            self.assertTrue(request.full_url.endswith("/sendMessage"))
+            self.assertIn(b"link_preview_options", request.data)
+            self.assertIn(b"parse_mode=HTML", request.data)
+            with closing(sqlite3.connect(test_db)) as check:
+                self.assertEqual(check.execute("SELECT telegram_id FROM test_deliveries").fetchall(), [(None,)])
+            return io.BytesIO(b'{"ok":true,"result":{"message_id":541}}')
+
+        with self.store() as conn:
+            state = journal.Journal(conn)
+            before = state.clock()
+            with (patch.dict(journal.os.environ, env, clear=True),
+                  patch.object(journal.urllib.request, "urlopen", side_effect=fake_telegram) as transport):
+                journal.test_delivery(payload, test_db, Mock())
+                with self.assertRaisesRegex(ValueError, "уже был отправлен"):
+                    journal.test_delivery(payload, test_db, Mock())
+            self.assertEqual(transport.call_count, 3)
+            self.assertEqual(state.clock(), before)
+        with closing(sqlite3.connect(test_db)) as conn:
+            self.assertEqual(conn.execute("SELECT telegram_id FROM test_deliveries").fetchall(), [(541,)])
+
+    def test_private_delivery_fails_closed_for_missing_or_wrong_chat(self):
+        payload = {"issues": [{"html": "Тест", "cover": None}], "verified_links": True}
+        with patch.dict(journal.os.environ, {"TELEGRAM_BOT_TOKEN": "existing-token"}, clear=True):
+            with patch.object(journal.urllib.request, "urlopen") as transport:
+                with self.assertRaisesRegex(ValueError, "ART_RADAR_TEST_CHAT_ID"):
+                    journal.test_delivery(payload, self.path, Mock())
+                transport.assert_not_called()
+        env = {"TELEGRAM_BOT_TOKEN": "existing-token", "ART_RADAR_TEST_CHAT_ID": "42"}
+        with (patch.dict(journal.os.environ, env, clear=True),
+              patch.object(journal.urllib.request, "urlopen",
+                           side_effect=lambda *_args, **_kw: io.BytesIO(b'{"ok":true,"result":{"type":"group","id":42}}')) as wire):
+            with self.assertRaisesRegex(ValueError, "не подтвердил личный чат"):
+                journal.test_delivery(payload, self.path, Mock())
+            self.assertTrue(wire.call_args.args[0].full_url.endswith("/getChat"))
+            self.assertFalse(self.path.exists())
+
+    def test_explicit_rejection_releases_reservation_without_resend_that_day(self):
+        error = urllib.error.HTTPError("https://api.telegram.org", 429, "Too Many Requests", {},
+                                       io.BytesIO(b'{"ok":false,"error_code":429}'))
+        with (self.store() as conn, patch.dict(journal.os.environ, CREDS, clear=True),
+              patch.object(journal, "now_moscow", return_value=NOW),
+              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
+              patch.object(journal.urllib.request, "urlopen", side_effect=error) as transport):
+            state = journal.Journal(conn)
+            with self.assertRaises(journal.TelegramRejected):
+                journal.scheduled(state, self.config, fresh(), Mock())
+            self.assertEqual(state.clock(), (None, 0, None))
+            journal.scheduled(state, self.config, fresh(), Mock())
+            transport.assert_called_once()

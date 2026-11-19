@@ -13,6 +13,11 @@
 !README.md
 !docs/
 !docs/*.png
+!docs/telegram-journal.md
+!docs/artist-radar.md
+!docs/video-platforms.md
+!editorial/
+!editorial/*.json
 !site_assets/
 !site_assets/*.png
 __pycache__/

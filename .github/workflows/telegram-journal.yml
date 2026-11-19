@@ -1,0 +1,182 @@
+name: Журнал Art Radar
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Предпросмотр, диагностика API, личный тест или сверка с Telegram
+        type: choice
+        options: [preview, check_platforms, private_test, confirmed, absent]
+        default: preview
+      issue:
+        description: Номер выпуска для сверки
+        type: string
+      message:
+        description: Номер сообщения в теме Telegram при подтверждении
+        type: string
+      preview_run_id:
+        description: Номер успешного запуска preview для личной тестовой отправки
+        type: string
+  schedule:
+    - cron: "0,30 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'preview'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        if: vars.ART_RADAR_JOURNAL_SCHEDULED == '1'
+        with:
+          ref: art-radar-journal-state
+          path: journal-state
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Собрать выпуск для просмотра
+        env:
+          ART_RADAR_JOURNAL_COLLAGE: ${{ vars.ART_RADAR_JOURNAL_COLLAGE }}
+          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
+          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
+        run: python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: art-radar-journal-preview
+          path: journal-preview/
+
+  check_platforms:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'check_platforms'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Проверить доступ к публичным метаданным видео
+        env:
+          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
+          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
+        run: python -m radar.telegram_journal check-platforms
+
+  private_test:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'private_test' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: art-radar-journal-test-state
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Проверить происхождение выпуска для теста
+        shell: bash
+        env:
+          RUN_ID: ${{ inputs.preview_run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" |
+            jq -e --arg branch "$DEFAULT_BRANCH" --arg repo "$GITHUB_REPOSITORY" '
+              ((.path // "") | split("@")[0]) == ".github/workflows/telegram-journal.yml" and .head_branch == $branch and
+              .head_repository.full_name == $repo and .event == "workflow_dispatch" and .conclusion == "success"
+            '
+      - uses: actions/download-artifact@v4
+        with:
+          name: art-radar-journal-preview
+          run-id: ${{ inputs.preview_run_id }}
+          github-token: ${{ github.token }}
+          path: approved-preview
+      - uses: actions/checkout@v4
+        with:
+          path: journal-test-state
+      - name: Открыть отдельную ветку тестовых доставок
+        working-directory: journal-test-state
+        run: |
+          ref=refs/heads/art-radar-journal-test-state
+          if git ls-remote --exit-code --heads origin "$ref"; then
+            git fetch --no-tags origin "$ref"
+            git switch -C art-radar-journal-test-state FETCH_HEAD
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+            git switch --orphan art-radar-journal-test-state
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Установить средства для коллажа
+        if: vars.ART_RADAR_JOURNAL_COLLAGE == '1'
+        run: python -m pip install Pillow
+      - name: Отправить единственный выпуск в подтверждённый личный чат
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
+          ART_RADAR_TEST_CHAT_ID: ${{ secrets.ART_RADAR_TEST_CHAT_ID }}
+        run: >-
+          python -m radar.telegram_journal --git-state test-send
+          --audit approved-preview/audit.json --test-db journal-test-state/journal-test.sqlite3
+
+  journal:
+    if: >-
+      (github.event_name == 'schedule' && vars.ART_RADAR_JOURNAL_SCHEDULED == '1') ||
+      (github.event_name == 'workflow_dispatch' && (inputs.mode == 'confirmed' || inputs.mode == 'absent'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: art-radar-journal-state
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: art-radar-journal-state
+          path: journal-state
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Установить средства для коллажа
+        if: github.event_name == 'schedule' && vars.ART_RADAR_JOURNAL_COLLAGE == '1'
+        run: python -m pip install Pillow
+      - name: Сбор и проверка срока выпуска
+        if: github.event_name == 'schedule'
+        env:
+          ART_RADAR_JOURNAL_COLLAGE: ${{ vars.ART_RADAR_JOURNAL_COLLAGE }}
+          ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
+          ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
+          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
+          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
+          JOURNAL_TELEGRAM_TOKEN: ${{ secrets.JOURNAL_TELEGRAM_TOKEN }}
+          JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
+          JOURNAL_TELEGRAM_TOPIC: ${{ secrets.JOURNAL_TELEGRAM_TOPIC }}
+        run: python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state scheduled
+      - name: Записать результат сверки
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          MODE: ${{ inputs.mode }}
+          ISSUE: ${{ inputs.issue }}
+          MESSAGE: ${{ inputs.message }}
+        run: |
+          if [ "$MODE" = confirmed ]; then
+            python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state reconcile "$ISSUE" --sent "$MESSAGE"
+          else
+            python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state reconcile "$ISSUE" --absent
+          fi
