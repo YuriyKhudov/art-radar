@@ -275,9 +275,17 @@ def load_harvest(paths, config):
     items = combine(current, [])
     sources.crossposts(items, config)
     counts = Counter(item["source"] for item in items)
-    return {"collected_at": runs[-1]["collected_at"],
-            "sources": [{**row, "count": row["count"] if key in {"artist-radar", "artist-translation", "youtube-details"} else counts[key]}
-                        for key, row in identities.items()],
+    indexes = Counter(item.get("archive_index") for item in items)
+    report = []
+    for key, row in identities.items():
+        if "-archive:" in key:
+            count = indexes[row.get("endpoint")]
+        elif key in {"artist-radar", "artist-translation", "youtube-details"}:
+            count = row["count"]
+        else:
+            count = counts[key]
+        report.append({**row, "count": count})
+    return {"collected_at": runs[-1]["collected_at"], "sources": report,
             "runs": [entry for run in runs for entry in run.get("runs", [
                 {"collected_at": run["collected_at"], "sources": run["sources"]}])],
             "items": items}

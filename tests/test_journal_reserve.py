@@ -3,7 +3,7 @@ import sqlite3
 import unittest
 from types import SimpleNamespace
 
-from radar import journal_illustrations as illustrations, journal_reserve, journal_visuals
+from radar import editorial, journal_illustrations as illustrations, journal_reserve, journal_visuals
 from radar.telegram_journal import verified_visual_issue
 
 
@@ -32,6 +32,16 @@ class ReserveTest(unittest.TestCase):
         self.assertFalse(verified_visual_issue({**issue, "cards": [video, video]}))
         self.assertFalse(verified_visual_issue({**issue, "cards": [article, {**video, "article": True}]}))
         self.assertFalse(journal_visuals.video_permalink("https://youtube.com/channel/UCaa"))
+
+    def test_author_video_uses_fact_in_title_without_inventing_duration(self):
+        source = {"artist_id": "author", "lang": "en", "domains": ["youtube.com"]}
+        raw = {"kind": "video", "title": "12 charcoal portraits in 15 minutes",
+               "artist_radar": {"stream": "priority", "artist": "Имя художника"},
+               "url": "https://youtube.com/watch?v=Lt4pX0ZhjsQ"}
+        card = editorial.official_drawing_exercise(raw, source)
+        self.assertIn("12 портретов углём за 15 мин.", card["summary"])
+        self.assertNotIn("duration", card)
+        self.assertIsNone(editorial.official_drawing_exercise({**raw, "title": "Charcoal prints for sale"}, source))
 
     def test_catalogued_art_requires_creator_and_per_file_reuse_rights(self):
         work = {"url": "https://upload.wikimedia.org/example.jpg", "mime": "image/jpeg",

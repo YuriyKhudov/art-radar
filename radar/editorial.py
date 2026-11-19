@@ -62,6 +62,8 @@ STOP = set("новая новые новый новости рассказал �
 MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
 SLOGAN = "Искусство, которое стоит вашего внимания"
 PHOTO_CAPTION_LIMIT = 1024
+DRAWING_EXERCISE = re.compile(r"^(\d{1,3})\s+(charcoal|graphite|pencil|ink)\s+(portraits|sketches|drawings)"
+                              r"\s+in\s+(\d{1,3})\s+minutes?\s*(\([^\n]*\))?$", re.I)
 
 
 @dataclass(frozen=True)
@@ -224,6 +226,35 @@ class RulesEditor:
         return None, ""
 
 
+def official_drawing_exercise(raw, source):
+    info = raw.get("artist_radar") or {}
+    if (raw["kind"] != "video" or not source.get("artist_id") or source["lang"] == "ru"
+            or info.get("stream") != "priority" or not info.get("artist") or (raw.get("seconds") or 45) < 45
+            or not sources.allowed(raw["url"], source["domains"])):
+        return None
+    match = DRAWING_EXERCISE.fullmatch(raw["title"].strip())
+    if not match or "/shorts/" in raw["url"]:
+        return None
+    count, medium, subject, minutes, extra = match.groups()
+    tools = {"charcoal": "углём", "graphite": "графитом", "pencil": "карандашом", "ink": "тушью"}
+    subjects = {"portraits": ("портрет", "портрета", "портретов"),
+                "sketches": ("набросок", "наброска", "набросков"), "drawings": ("рисунок", "рисунка", "рисунков")}
+    amount = int(count)
+    form = 2 if 11 <= amount % 100 <= 14 else 0 if amount % 10 == 1 else 1 if 2 <= amount % 10 <= 4 else 2
+    if not amount or not int(minutes):
+        return None
+    artist = info["artist"]
+    label = f"{count} {subjects[subject.lower()][form]} {tools[medium.lower()]} за {minutes} мин."
+    summary = f"{artist} ограничивает время на рисунок. В заголовке ролика — {label.lower()}"
+    if count == minutes and extra and "1 minute" in extra.lower():
+        summary += " На один рисунок отведена минута."
+    return {**raw, "title": f"{artist} · {label}", "original_title": raw["title"], "summary": summary,
+            "why": "Задание и материал подтверждены заголовком авторского ролика.", "direction": "practice",
+            "rubric": DIRECTIONS["practice"], "lang": source["lang"], "access": raw.get("access", "unknown"),
+            "type": "news", "topics": ["techniques"], "usefulness": 4.5, "originality": 4.6,
+            "verified_visual": True}
+
+
 def words(title):
     return frozenset(word[:7] for word in re.findall(r"[а-яёa-z0-9]{4,}", title.lower().replace("ё", "е"))
                      if word not in STOP)
@@ -262,6 +293,11 @@ def assess(items, config, now, history=(), provider=None):
                 reason = ""
         if registry and source and not item and reason == "Не найдена подходящая рубрика" and raw.get("search_matches"):
             item = artist_radar.russian_facts(raw, registry)
+            if item:
+                reason = ""
+        if config.get("video_link_fallback") and source and not item and reason in {
+                "Недостаточно содержательного описания источника", "Русскоязычное описание отсутствует"}:
+            item = official_drawing_exercise(raw, source)
             if item:
                 reason = ""
         if item:
