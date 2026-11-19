@@ -23,7 +23,7 @@ from dataclasses import replace
 from http.client import HTTPException
 from pathlib import Path
 
-from radar import (artist_pages, artist_radar, editorial, editorial_sources as sources, journal_articles, journal_collections,
+from radar import (artist_pages, artist_radar, editorial, editorial_sources as sources, journal_articles,
                    journal_cover, journal_reserve, journal_visuals, visual_issue)
 
 MOSCOW = dt.timezone(dt.timedelta(hours=3), "MSK")
@@ -313,41 +313,16 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
         cards = checked_cards
     url_check = check if verify is True else verify or None
     verified = {}
-    use_reserve = reserve is not None or replay_reserve
-    collection = (journal_collections.discoveries(cards, history) if use_reserve and not theme and
-                  config.get("open_collection_fallback") else [])
-    attempted, deferred = 0, set()
-    balance_articles = bool(collection)
 
     def validate(card):
-        nonlocal attempted
         if card.key not in verified:
-            article = {}
-            if article_checks and card.item["kind"] == "article":
-                if balance_articles and card.key not in article_checks.results:
-                    if attempted >= 3:
-                        deferred.add(card.key)
-                        return "В очереди автоматической редактуры"
-                    attempted += 1
-                article = article_checks.check(card)
+            article = article_checks.check(card) if article_checks and card.item["kind"] != "video" else {}
             verified[card.key] = article.get("reason") or (
                 True if article or not url_check else url_check(card.item["url"], card.source["domains"]))
         return verified[card.key]
 
-    validator = validate if verify or article_checks else None
-    picked, audit = editorial.select(cards, config, theme, validator, history, now,
-                                     reserve=use_reserve, visual=visual_checks is not None)
-    if len(picked) < config["min_items"] and collection:
-        combined = [*cards, *collection]
-        filled, expanded_audit = editorial.select(combined, config, theme, validator, history, now,
-                                                   reserve=True, visual=visual_checks is not None)
-        if len(filled) > len(picked):
-            cards, picked, audit = combined, filled, expanded_audit
-        if not picked and deferred:
-            balance_articles = False
-            cards = combined
-            picked, audit = editorial.select(cards, config, theme, validator, history, now,
-                                             reserve=True, visual=visual_checks is not None)
+    picked, audit = editorial.select(cards, config, theme, validate if verify or article_checks else None, history, now,
+                                     reserve=reserve is not None or replay_reserve, visual=visual_checks is not None)
     if reserve is not None:
         with reserve.connection:
             reserve.confirm([key for key, passed in verified.items() if passed is True], now)
@@ -360,7 +335,7 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
     selected_rows = {row["url"]: row for row in audit if row["decision"] == "Выбран в выпуск"}
     if article_checks:
         for index, card in enumerate(picked):
-            if card.item["kind"] == "article":
+            if card.item["kind"] != "video":
                 metadata = article_checks.check(card)
                 picked[index] = replace(card, item={**card.item, "journal_article": metadata})
                 row = selected_rows[card.item["url"]]

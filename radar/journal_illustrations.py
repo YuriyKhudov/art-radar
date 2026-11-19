@@ -179,11 +179,9 @@ def commons_asset(row, topic, authors, works, term, purpose):
         role = "artwork"
     if not role:
         return None
-    catalogue = {"creator": creator, "title": object_name, "created": field("DateTimeOriginal")[:140],
-                 "details": caption[:400], "categories": category[:1200]}
     return {"url": file_url, "source": origin, "credit": f"{creator[:105]} · {object_name[:105]}",
             "license": LICENSES[key], "license_url": LICENSE_URLS[key], "role": role,
-            "registry": "Wikimedia Commons", "work": object_name, "caption": caption[:150], "catalogue": catalogue}
+            "registry": "Wikimedia Commons", "work": object_name, "caption": caption[:150]}
 
 
 @lru_cache(maxsize=128)
@@ -217,7 +215,6 @@ def search(card, topic, page, config, read_page=journal_articles.public_page, ro
     results, trace, seen = [], [], set()
     title = card.item.get("original_title") or card.item["title"]
     named_subject = bool(re.search(r"разбор одного шедевра", title, re.I) and works)
-    subject_names = works[:1]
     for href in (page.links if page else []):
         if sources.allowed(href, [COMMONS]) and (marker := re.search(r"/wiki/(File:[^?#]+)", unquote(href))):
             terms.insert(0, (marker[1].replace("_", " "), "file"))
@@ -226,7 +223,6 @@ def search(card, topic, page, config, read_page=journal_articles.public_page, ro
             aliases, files = wikidata_work(works[0])
             trace.append({"provider": "Wikidata", "query": works[0], "basis": "work", "matched": len(files)})
             works += aliases
-            subject_names += aliases
             terms = [(file, "file") for file in files[:2]] + [(name, "work") for name in aliases[:1]] + terms
         except (OSError, KeyError, TypeError, ValueError):
             trace.append({"provider": "Wikidata", "query": works[0], "status": "unavailable"})
@@ -235,8 +231,8 @@ def search(card, topic, page, config, read_page=journal_articles.public_page, ro
             records = commons_query(term, file=purpose == "file")
             matches = [asset for row in records if (asset := commons_asset(row, topic, authors, works, term, purpose))]
             if named_subject:
-                matches = [{**asset, "work": works[0], "catalogue": {**asset["catalogue"], "title": works[0]}} for asset in matches
-                           if any(equivalent(asset["work"], work) for work in subject_names)]
+                matches = [{**asset, "work": works[0]} for asset in matches
+                           if any(equivalent(asset["work"], work) for work in works)]
             trace.append({"provider": "Wikimedia Commons", "query": term, "basis": purpose,
                           "found": len(records), "matched": len(matches)})
             for asset in matches:
