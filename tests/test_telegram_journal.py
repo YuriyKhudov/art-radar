@@ -9,12 +9,12 @@ from contextlib import closing, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from radar import editorial, editorial_sources as sources, journal_cover, telegram_journal as journal
+from radar import editorial, editorial_sources as sources, journal_cover, telegram_journal as journal, visual_issue
 
 NOW = dt.datetime(2026, 11, 18, 19, tzinfo=journal.MOSCOW)
 CONFIG = sources.read(sources.ROOT / "sources.json")
 ARCHIVE = [item for item in sources.read(sources.ROOT / "materials.json") if item["type"] == "archive"]
-CREDS = {"ART_RADAR_JOURNAL_PUBLISH": "1", "JOURNAL_TELEGRAM_TOKEN": "example",
+CREDS = {"ART_RADAR_JOURNAL_PUBLISH": "1", "ART_RADAR_JOURNAL_FORMAT": "legacy", "JOURNAL_TELEGRAM_TOKEN": "example",
          "JOURNAL_TELEGRAM_CHAT": "-123", "JOURNAL_TELEGRAM_TOPIC": "456"}
 
 
@@ -114,6 +114,35 @@ class EditorialTest(unittest.TestCase):
         text, cover = editorial.render(picked, {**CONFIG, "presentation": presentation}, now=NOW)
         self.assertEqual(text, baseline)
         self.assertEqual(cover["tiles"][0]["image"], asset)
+
+    def test_visual_cards_use_native_preview_and_real_action(self):
+        picked, _ = editorial.assess(fresh(), CONFIG, NOW)
+        issue = editorial.render_visual(picked, CONFIG, None, NOW)
+        issue["cards"][0]["images"] = [{"url": "https://images.metmuseum.org/example.jpg", "license": "CC0"}]
+        with patch.object(journal, "visual_photos") as load:
+            packets = journal.visual_packets(visual_issue.make_plan(issue, "native"), "42", None, CONFIG)
+        load.assert_not_called()
+        self.assertEqual(len(packets), 4)
+        for card, (method, data, files) in zip(issue["cards"], packets):
+            self.assertEqual(method, "sendMessage")
+            self.assertFalse(files)
+            self.assertEqual(data["disable_notification"], "true")
+            self.assertIn('"prefer_large_media":true', data["link_preview_options"])
+            self.assertIn('"show_above_text":true', data["link_preview_options"])
+            self.assertIn(card["url"], data["reply_markup"])
+        self.assertIn("Art Radar", packets[0][1]["text"])
+        self.assertNotIn("Art Radar", packets[1][1]["text"])
+
+    def test_single_visual_issue_has_media_and_a_button_per_card(self):
+        picked, _ = editorial.assess(fresh(), CONFIG, NOW)
+        issue = editorial.render_visual(picked, CONFIG, None, NOW)
+        asset = {"url": "https://images.metmuseum.org/example.jpg", "license": "CC0", "credit": "Музей"}
+        with patch.object(journal, "visual_photos", return_value=[(asset, b"jpg")]):
+            [(method, data, files)] = journal.visual_packets(visual_issue.make_plan(issue, "rich"), "42", None, CONFIG)
+        self.assertEqual(method, "sendRichMessage")
+        self.assertEqual(len(files), 4)
+        self.assertEqual(data["rich_message"].count("<tg-button type="), 4)
+        self.assertEqual(data["rich_message"].count('tg://photo?id='), 4)
 
     def test_recency_boundary_and_marketing(self):
         raw = fresh()
@@ -413,6 +442,35 @@ class JournalTest(unittest.TestCase):
             self.assertIn(b"original", request.data)
             self.assertIn(b'name="caption"', request.data)
             self.assertNotIn(b"link_preview_options", request.data)
+
+    def test_visual_delivery_never_resends_a_confirmed_or_unconfirmed_card(self):
+        path = self.path
+        with closing(sqlite3.connect(path)) as first:
+            outbox = visual_issue.Deliveries(first)
+            transport = Mock(side_effect=[11, RuntimeError("uncertain")])
+            with self.assertRaisesRegex(RuntimeError, "uncertain"):
+                outbox.deliver("release", ["one", "two", "three"], transport, Mock(), pause=Mock())
+            self.assertEqual([call.args for call in transport.call_args_list], [("one", None), ("two", 11)])
+        with closing(sqlite3.connect(path)) as second:
+            outbox = visual_issue.Deliveries(second)
+            transport = Mock(return_value=13)
+            with self.assertRaisesRegex(visual_issue.UnconfirmedCard, "№2"):
+                outbox.deliver("release", ["one", "two", "three"], transport, Mock(), pause=Mock())
+            transport.assert_not_called()
+            outbox.reconcile("release", 12)
+            self.assertEqual(outbox.deliver("release", ["one", "two", "three"], transport, Mock(), pause=Mock()),
+                             [11, 12, 13])
+            transport.assert_called_once_with("three", 11)
+
+    def test_visual_explicit_rejection_allows_only_that_card_to_retry(self):
+        with self.store() as conn:
+            outbox = visual_issue.Deliveries(conn)
+            transport = Mock(side_effect=[11, journal.TelegramRejected("400"), 12, 13])
+            with self.assertRaises(journal.TelegramRejected):
+                outbox.deliver("release", ["one", "two", "three"], transport, Mock(), pause=Mock())
+            self.assertEqual(outbox.deliver("release", ["one", "two", "three"], transport, Mock(), pause=Mock()),
+                             [11, 12, 13])
+            self.assertEqual([call.args[0] for call in transport.call_args_list], ["one", "two", "two", "three"])
 
     def test_explicit_rejection_releases_reservation_without_resend_that_day(self):
         error = urllib.error.HTTPError("https://api.telegram.org", 429, "Too Many Requests", {},

@@ -17,6 +17,15 @@ on:
       preview_run_id:
         description: Номер успешного запуска preview для повторного оформления или личной отправки
         type: string
+      visual:
+        description: Вариант личного теста
+        type: choice
+        options: [legacy, native, cards, rich, both]
+        default: legacy
+      comparison:
+        description: Проверочный выпуск с разрешёнными иллюстрациями из сохранённой выгрузки
+        type: boolean
+        default: false
   schedule:
     - cron: "0,30 * * * *"
 
@@ -52,10 +61,15 @@ jobs:
           github-token: ${{ github.token }}
           path: previous-preview
       - name: Оформить выпуск из сохранённого отбора
-        if: inputs.preview_run_id != ''
+        if: inputs.preview_run_id != '' && !inputs.comparison
         run: >-
           python -m radar.telegram_journal preview
           --snapshot previous-preview/harvest.json --selection previous-preview/selection.json
+      - name: Подготовить одинаковый выпуск для двух визуальных вариантов
+        if: inputs.preview_run_id != '' && inputs.comparison
+        run: >-
+          python -m radar.telegram_journal preview --snapshot previous-preview/harvest.json
+          --selection previous-preview/selection.json --comparison
       - name: Собрать выпуск для просмотра
         if: inputs.preview_run_id == ''
         env:
@@ -135,8 +149,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Установить средство подготовки визуальных карточек
+        if: inputs.visual != 'legacy'
+        run: python -m pip install "Pillow==12.3.0"
       - name: Отправить единственный выпуск в подтверждённый личный чат
         env:
+          VISUAL_VARIANT: ${{ inputs.visual }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
@@ -144,6 +162,7 @@ jobs:
         run: >-
           python -m radar.telegram_journal --git-state test-send
           --audit approved-preview/audit.json --test-db journal-test-state/journal-test.sqlite3
+          --variant "$VISUAL_VARIANT"
 
   journal:
     if: >-
@@ -175,6 +194,7 @@ jobs:
         env:
           ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
           ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
+          ART_RADAR_JOURNAL_FORMAT: ${{ vars.ART_RADAR_JOURNAL_FORMAT }}
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
           JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
           JOURNAL_TELEGRAM_TOKEN: ${{ secrets.JOURNAL_TELEGRAM_TOKEN }}

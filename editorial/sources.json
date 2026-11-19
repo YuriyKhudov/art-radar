@@ -12,6 +12,30 @@
   "theme_every": 0,
   "previously_published": [],
   "presentation": {
+    "visual_comparison": [
+      "https://youtube.com/watch?v=Lt4pX0ZhjsQ",
+      "https://rutube.ru/video/be0461c53e9cb4bdfc8e56274507f39c",
+      "https://jacksonsart.com/blog/2026/11/16/behind-the-movement-the-hudson-river-school"
+    ],
+    "visual_comparison_sources": {"jacksons": "artist-jacksons"},
+    "visual_images": {
+      "https://rutube.ru/video/be0461c53e9cb4bdfc8e56274507f39c": [
+        {
+          "url": "https://upload.wikimedia.org/wikipedia/commons/b/bc/%22%D0%94%D1%83%D1%80%D0%BD%D0%BE%D0%B9_%D1%81%D0%BE%D0%BD%22%2C_%D0%90._%D0%9C%D0%B8%D1%80%D0%B7%D0%BE%D1%8F%D0%BD%D0%B0.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+          "source": "https://commons.wikimedia.org/?curid=192260497",
+          "credit": "Артур Мирзоян, «Дурной сон» · Ка Миро",
+          "license": "CC BY-SA 4.0"
+        }
+      ],
+      "https://jacksonsart.com/blog/2026/11/16/behind-the-movement-the-hudson-river-school": [
+        {
+          "url": "https://images.metmuseum.org/CRDImages/ad/web-large/DP-12550-001.jpg",
+          "source": "https://www.metmuseum.org/art/collection/search/10497",
+          "credit": "Томас Коул, «Излучина» · The Met",
+          "license": "CC0"
+        }
+      ]
+    },
     "names": {
       "Sylvain Lefebvre": "Сильвен Лефевр",
       "Bill Anton": "Билл Антон",
@@ -29,6 +53,7 @@
         "url": "https://upload.wikimedia.org/wikipedia/commons/7/76/%D0%92%D1%8F%D1%87%D0%B5%D1%81%D0%BB%D0%B0%D0%B2_%D0%9A%D0%BE%D1%80%D0%BE%D0%BB%D0%B5%D0%BD%D0%BA%D0%BE%D0%B2_%D0%BD%D0%B0_%D0%B2%D1%8B%D1%81%D1%82%D0%B0%D0%B2%D0%BA%D0%B5_%D0%B2_%D0%A6%D0%94%D0%A5.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
         "source": "https://commons.wikimedia.org/?curid=63261212",
         "credit": "JuliusMir",
+        "role": "portrait",
         "license": "CC BY-SA 4.0"
       },
       "https://rutube.ru/video/be0461c53e9cb4bdfc8e56274507f39c": {

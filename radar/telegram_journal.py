@@ -3,6 +3,7 @@
 import argparse
 import datetime as dt
 import hashlib
+import hmac
 import html
 import io
 import json
@@ -11,6 +12,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,7 +23,7 @@ from contextlib import closing
 from http.client import HTTPException
 from pathlib import Path
 
-from radar import artist_pages, artist_radar, editorial, editorial_sources as sources, journal_cover
+from radar import artist_pages, artist_radar, editorial, editorial_sources as sources, journal_cover, visual_issue
 
 MOSCOW = dt.timezone(dt.timedelta(hours=3), "MSK")
 DEFAULT_DB = sources.ROOT.parent / "data" / "journal.sqlite3"
@@ -88,6 +90,7 @@ class Journal:
             );
             CREATE UNIQUE INDEX IF NOT EXISTS one_pending ON issues(status) WHERE status = 'pending';
         """)
+        self.deliveries = visual_issue.Deliveries(conn)
 
     def setting(self, name):
         row = self.conn.execute("SELECT value FROM settings WHERE name=?", (name,)).fetchone()
@@ -146,7 +149,7 @@ class Journal:
         pending = self.conn.execute("SELECT id FROM issues WHERE status='pending'").fetchone()
         return sent, count, pending[0] if pending else None
 
-    def reserve(self, picked, now, time, interval, expected_count):
+    def reserve(self, picked, now, time, interval, expected_count, plan=None):
         with self.conn:
             self.conn.execute("BEGIN IMMEDIATE")
             last, count, pending = self.clock()
@@ -157,8 +160,11 @@ class Journal:
             if not batch:
                 return None
             self.put("reservation", uuid.uuid4().hex)
-            return self.conn.execute("INSERT INTO issues (status, attempted, items) VALUES ('pending', ?, ?)",
-                                     (now.isoformat(), encode(batch))).lastrowid
+            issue = self.conn.execute("INSERT INTO issues (status, attempted, items) VALUES ('pending', ?, ?)",
+                                      (now.isoformat(), encode(batch))).lastrowid
+            if plan:
+                self.deliveries.record(f"issue:{issue}", plan)
+            return issue
 
     def resolve(self, issue, message_id, now=None):
         with self.conn:
@@ -209,8 +215,8 @@ def check(url, domains, image=False):
 
 
 class LinkChecks:
-    def __init__(self, replay=None, verify=check):
-        self.replay = replay is not None
+    def __init__(self, replay=None, verify=check, allow_new=False):
+        self.replay = replay is not None and not allow_new
         self.verify = verify
         self.result = {(url, tuple(domains), image): valid for url, domains, image, valid in replay or []}
 
@@ -281,7 +287,8 @@ def prepare(pool, config, history, now, theme, sequence, verify):
     if not picked:
         return picked, {"theme": theme, "items": excluded + audit}
     text, image = editorial.render(picked, config, theme, url_check=url_check, now=now)
-    return picked, {"theme": theme, "html": text, "cover": image, "items": excluded + audit}
+    return picked, {"theme": theme, "html": text, "cover": image, "items": excluded + audit,
+                    "visual": editorial.render_visual(picked, config, theme, now)}
 
 
 def batch_verifier(pool, config):
@@ -327,6 +334,8 @@ def save_preview(output, issues, report, day, verified, snapshot=None, replay=No
         snapshot_hash = hashlib.sha256(body).hexdigest()
     if replay is not None:
         (output / "selection.json").write_text(json.dumps(replay, ensure_ascii=False, indent=2), encoding="utf-8")
+    if len(issues) == 1 and issues[0].get("visual"):
+        (output / "visual.html").write_text(visual_issue.gallery_preview(issues[0]["visual"]), encoding="utf-8")
     selected = [row for issue in issues for row in issue["items"] if row["decision"] == "Выбран в выпуск"]
     diversity = {"directions": dict(Counter(row["direction"] for row in selected)),
                  "publishers": dict(Counter(row["publisher"] for row in selected)),
@@ -495,8 +504,7 @@ def favorite_audit(registry, report, cards):
     return "<h2>Приоритетные художники</h2>" + "".join(sections)
 
 
-class TelegramRejected(RuntimeError):
-    """Telegram returned an explicit rejection of this request."""
+TelegramRejected = visual_issue.TelegramRejected
 
 
 def collage_bytes(assets):
@@ -547,12 +555,19 @@ def send(issue, token, chat, thread, photo=None):
         preview = {"url": cover["url"], "prefer_large_media": True, "show_above_text": True} if cover and cover.get("url") else {
             "is_disabled": True}
         data.update(text=text, link_preview_options=encode(preview))
-    if photo:
+    files = [("photo", photo, "art-radar.jpg")] if photo else []
+    return send_request(method, data, token, files)
+
+
+def send_request(method, data, token, files=()):
+    if files:
         boundary = uuid.uuid4().hex
         parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
                  for name, value in data.items()]
-        parts.extend([f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="art-radar.jpg"\r\n'
-                      'Content-Type: image/jpeg\r\n\r\n'.encode(), photo, f'\r\n--{boundary}--\r\n'.encode()])
+        for name, photo, filename in files:
+            header = f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'
+            parts.extend([(header + 'Content-Type: image/jpeg\r\n\r\n').encode(), photo, b'\r\n'])
+        parts.append(f'--{boundary}--\r\n'.encode())
         body, headers = b"".join(parts), {"Content-Type": f"multipart/form-data; boundary={boundary}"}
     else:
         body, headers = urllib.parse.urlencode(data).encode(), {}
@@ -561,7 +576,14 @@ def send(issue, token, chat, thread, photo=None):
         with urllib.request.urlopen(request, timeout=30) as response:
             result = json.load(response)
         if result.get("ok") and int(result["result"]["message_id"]) > 0:
-            return int(result["result"]["message_id"])
+            message = result["result"]
+            if data.get("disable_notification") == "true":
+                blocks = (message.get("rich_message") or {}).get("blocks", [])
+                photos = sum(block.get("type") == "photo" for block in blocks)
+                print(f"Telegram · {method} · сообщение {message['message_id']} · "
+                      f"фото {photos or int(bool(message.get('photo')))} · "
+                      f"настройки превью {bool(message.get('link_preview_options'))}")
+            return int(message["message_id"])
     except urllib.error.HTTPError as error:
         if error.code in {400, 401, 403, 429}:
             try:
@@ -573,6 +595,87 @@ def send(issue, token, chat, thread, photo=None):
     except (OSError, ValueError, KeyError, TypeError, HTTPException):
         pass
     raise RuntimeError("Telegram не подтвердил отправку. Сначала проверьте тему и разрешите ожидающий выпуск.")
+
+
+def visual_photos(card, domains):
+    from PIL import Image, ImageOps
+
+    photos = []
+    for asset in card["images"]:
+        original = journal_cover.artwork(asset, domains)
+        if original is None:
+            continue
+        thumbnail = ImageOps.contain(original, (1800, 1800))
+        canvas = Image.new("RGB", thumbnail.size, "#f6f0e5")
+        canvas.paste(thumbnail, (0, 0), thumbnail)
+        target = io.BytesIO()
+        canvas.save(target, "JPEG", quality=91, optimize=True)
+        photos.append((asset, target.getvalue()))
+    return photos
+
+
+def visual_packets(plan, chat, thread, config, image_cache=None):
+    domains = config["image_domains"]
+    image_cache = {} if image_cache is None else image_cache
+
+    def load(card):
+        key = card["url"]
+        if key not in image_cache:
+            image_cache[key] = visual_photos(card, domains)
+        return image_cache[key]
+
+    common = {"chat_id": chat, "disable_notification": "true"}
+    if thread is not None:
+        common["message_thread_id"] = thread
+    packets = []
+    for entry in plan:
+        card = entry.get("card")
+        if card and (entry.get("native") or not card["images"] or card["images"][0].get("role") == "portrait"):
+            photos = []
+        elif card:
+            photos = load(card)
+        if card and len(photos) < 2:
+            text = "\n\n".join(filter(None, (entry["header"], visual_issue.card_html(card))))
+            markup = {"inline_keyboard": [[{"text": card["action"], "url": card["url"]}]]}
+            data = {**common, "parse_mode": "HTML", "reply_markup": encode(markup)}
+            if photos:
+                asset, body = photos[0]
+                data["caption"] = f"{text}\n<i>{visual_issue.credit_html(asset)}</i>"
+                if editorial.length(data["caption"]) > editorial.PHOTO_CAPTION_LIMIT:
+                    raise ValueError("Подпись к визуальной карточке превышает лимит Telegram.")
+                packets.append(("sendPhoto", data, [("photo", body, "art-radar.jpg")]))
+            else:
+                preview = {"url": card["url"], "prefer_large_media": True, "show_above_text": True}
+                title = html.escape(card["title"])
+                linked = editorial.link(card["title"], card["url"])
+                data.update(text=text.replace(f"<b>{title}</b>", f"<b>{linked}</b>", 1),
+                            link_preview_options=encode(preview))
+                packets.append(("sendMessage", data, []))
+            continue
+        cards = [card] if card else entry["cards"]
+        all_photos = [photos] if card else [load(item) for item in cards]
+        if not all(all_photos):
+            raise ValueError("Для единого выпуска требуется разрешённое изображение для каждой карточки.")
+        media, files, figures = [], [], []
+        for batch in all_photos:
+            gallery = []
+            for asset, body in batch:
+                identifier = f"art{len(files) + 1}"
+                files.append((identifier, body, f"{identifier}.jpg"))
+                media.append({"id": identifier, "media": {"type": "photo", "media": f"attach://{identifier}"}})
+                gallery.append((identifier, asset))
+            figures.append(gallery)
+        rich = {"html": visual_issue.rich_html(entry["header"], cards, figures), "media": media}
+        packets.append(("sendRichMessage", {**common, "rich_message": encode(rich)}, files))
+    return packets
+
+
+def transmit_visual(packet, root, token):
+    method, data, files = packet
+    if root is not None:
+        reply = {"message_id": root, "allow_sending_without_reply": True}
+        data = {**data, "reply_parameters": encode(reply)}
+    return send_request(method, data, token, files)
 
 
 def confirmed_test_chat():
@@ -639,6 +742,34 @@ def test_delivery(audit, db, persist, artifacts=None):
     print(f"Тестовый выпуск доставлен в личный чат. Номер сообщения {message_id}.")
 
 
+def test_visual_delivery(audit, db, persist, config, variant):
+    issues = audit.get("issues", [])
+    if len(issues) != 1 or not audit.get("verified_links") or not issues[0].get("visual"):
+        raise ValueError("Нужен визуальный выпуск из проверенного предпросмотра.")
+    issue = issues[0]["visual"]
+    token, chat = confirmed_test_chat()
+    modes = ("native", "rich") if variant == "both" else (variant,)
+    labels = {"native": "А · нативные превью", "cards": "Отдельные карточки", "rich": "Б · один визуальный выпуск"}
+    plans = [(mode, visual_issue.make_plan(issue, mode, labels[mode])) for mode in modes]
+    db.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(db, timeout=15)) as connection:
+        if connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='issues'").fetchone():
+            raise ValueError("Для теста требуется отдельная база доставки.")
+        outbox = visual_issue.Deliveries(connection)
+        image_cache = {}
+        prepared = [(mode, plan, visual_packets(plan, chat, None, config, image_cache)) for mode, plan in plans]
+        for mode, plan, packets in prepared:
+            identity = json.dumps(plan, sort_keys=True, ensure_ascii=False)
+            key = hmac.new(token.encode(), f"{chat}\n{mode}\n{identity}".encode(), hashlib.sha256).hexdigest()
+            with connection:
+                if outbox.plan(key) is None:
+                    outbox.record(key, plan)
+            receipts = outbox.deliver(key, packets, lambda packet, root: transmit_visual(packet, root, token), persist)
+            print(f"Вариант {mode} · Telegram подтвердил сообщения {', '.join(map(str, receipts))}.")
+            if mode == "native" and variant == "both":
+                time.sleep(1.1)
+
+
 def check_platforms(config):
     credentials = {"YouTube": os.getenv("JOURNAL_YOUTUBE_API_KEY"), "VK": os.getenv("JOURNAL_VK_ACCESS_TOKEN")}
     for name, key in credentials.items():
@@ -668,6 +799,18 @@ def check_platforms(config):
         print(f"{name} · {status}")
 
 
+def publish_visual(journal, issue, packets, token, persist):
+    try:
+        receipts = journal.deliveries.deliver(f"issue:{issue}", packets,
+                                             lambda packet, root: transmit_visual(packet, root, token), persist)
+    except visual_issue.UnconfirmedCard as error:
+        print(f"Выпуск №{issue}. {error}")
+        return
+    journal.resolve(issue, receipts[0], now_moscow())
+    persist()
+    print(f"Выпуск №{issue} подтверждён. Карточек {len(receipts)}.")
+
+
 def scheduled(journal, config, archive, persist):
     now = now_moscow()
     if journal.daily(config, now):
@@ -675,25 +818,40 @@ def scheduled(journal, config, archive, persist):
     if os.getenv("ART_RADAR_JOURNAL_PUBLISH") != "1":
         return
     last, count, pending = journal.clock()
-    if pending:
+    plan = journal.deliveries.plan(f"issue:{pending}") if pending else None
+    if pending and not plan:
         print(f"Выпуск №{pending} ожидает подтверждения. Автоотправка приостановлена.")
         return
     time = dt.time.fromisoformat(os.getenv("ART_RADAR_JOURNAL_TIME") or config["publish_time"])
     interval = config["interval_days"]
-    if not due(now, last, time, interval, journal.setting("attempted_on")):
+    if not pending and not due(now, last, time, interval, journal.setting("attempted_on")):
         return
     credentials = [os.getenv(name) for name in ("JOURNAL_TELEGRAM_TOKEN", "JOURNAL_TELEGRAM_CHAT", "JOURNAL_TELEGRAM_TOPIC")]
     if not all(credentials):
         raise ValueError("Для публикации требуются отдельные настройки токена, группы и темы журнала")
+    token, chat, thread = credentials
+    route = hashlib.sha256(f"{chat}\n{thread}".encode()).hexdigest()
+    if plan:
+        if plan.get("destination") != route:
+            raise ValueError("Чат или тема ожидающего выпуска изменились. Сверьте настройки доставки.")
+        publish_visual(journal, pending, visual_packets(plan["entries"], chat, thread, config), token, persist)
+        return
     sequence = count + 1
     theme = next_theme(config, sequence)
     pool, history = combine(journal.items(), archive), journal.history()
     picked, result = prepare(pool, config, history, now, theme, sequence, verify=True)
     if not picked and theme:
         picked, result = prepare(pool, config, history, now, None, sequence, verify=True)
-    issue = journal.reserve(picked, now, time, interval, count)
+    variant = os.getenv("ART_RADAR_JOURNAL_FORMAT") or "cards"
+    plan = visual_issue.make_plan(result["visual"], variant) if picked and variant != "legacy" else None
+    packets = visual_packets(plan, chat, thread, config) if plan else []
+    reserved_plan = {"entries": plan, "destination": route} if plan else None
+    issue = journal.reserve(picked, now, time, interval, count, plan=reserved_plan)
     persist()
     if issue:
+        if packets:
+            publish_visual(journal, issue, packets, token, persist)
+            return
         try:
             message_id = send(result, *credentials)
         except TelegramRejected:
@@ -724,12 +882,14 @@ def main():
     preview.add_argument("--artist-search", type=Path, help="Использовать сохранённый реальный поиск Artist Radar")
     preview.add_argument("--selection", type=Path, help="Повторить отбор с зафиксированными историей и проверками ссылок")
     preview.add_argument("--offline", action="store_true", help="Локальная проверка оформления без сетевой валидации")
+    preview.add_argument("--comparison", action="store_true", help="Один тестовый выпуск с разрешёнными иллюстрациями")
     commands.add_parser("scheduled", help="Ежедневный сбор и проверка срока выпуска")
     commands.add_parser("status", help="Последняя отправка и выпуск в ожидании")
     commands.add_parser("check-platforms", help="Проверить ключи публичных API без поиска и публикации")
     test_send = commands.add_parser("test-send", help="Отправить один выпуск в подтверждённый личный Telegram-чат")
     test_send.add_argument("--audit", type=Path, required=True)
     test_send.add_argument("--test-db", type=Path, default=DEFAULT_TEST_DB)
+    test_send.add_argument("--variant", choices=("legacy", "native", "cards", "rich", "both"), default="legacy")
     reconcile = commands.add_parser("reconcile", help="Сверка с Telegram после прерванной отправки")
     reconcile.add_argument("issue", type=int)
     outcome = reconcile.add_mutually_exclusive_group(required=True)
@@ -740,11 +900,17 @@ def main():
         db = args.test_db.resolve()
         if db == args.db.resolve() or db == DEFAULT_DB.resolve():
             parser.error("История тестов хранится в отдельной базе")
-        test_delivery(sources.read(args.audit), db, lambda: checkpoint(db, TEST_STATE_BRANCH) if args.git_state else None,
-                      args.audit.parent)
+        audit = sources.read(args.audit)
+        persist_test = lambda: checkpoint(db, TEST_STATE_BRANCH) if args.git_state else None
+        if args.variant == "legacy":
+            test_delivery(audit, db, persist_test, args.audit.parent)
+        else:
+            test_visual_delivery(audit, db, persist_test, sources.read(sources.ROOT / "sources.json"), args.variant)
         return
     if args.command == "preview" and args.selection and (not args.snapshot or args.offline or args.artist_search):
         parser.error("--selection требует --snapshot и использует сохранённые сетевые проверки")
+    if args.command == "preview" and args.comparison and (not args.snapshot or args.offline or args.examples):
+        parser.error("--comparison требует --snapshot и проверенных ссылок")
     if args.command == "preview" and (args.offline and args.refresh or args.snapshot and args.refresh):
         parser.error("--refresh требует сети и не совмещается с --snapshot")
     if args.command == "preview" and args.examples and (args.theme or args.offline and not args.snapshot):
@@ -776,7 +942,13 @@ def main():
             print(encode({"last_success": last, "published": count, "pending": pending,
                           "collected_on": journal.setting("collected_on")}))
         elif args.command == "reconcile":
-            journal.resolve(args.issue, args.sent)
+            key = f"issue:{args.issue}"
+            if journal.deliveries.plan(key) is not None:
+                if journal.clock()[2] != args.issue:
+                    raise ValueError("Этот визуальный выпуск уже закрыт.")
+                journal.deliveries.reconcile(key, args.sent)
+            else:
+                journal.resolve(args.issue, args.sent)
             persist()
         else:
             snapshot = None
@@ -811,6 +983,12 @@ def main():
             else:
                 selections = [(now - dt.timedelta(days=i * config["interval_days"]), None)
                               for i in reversed(range(5))] if args.examples else [(now, args.theme or next_theme(config, count + 1))]
+            if args.comparison:
+                style = config["presentation"]
+                keys = set(style["visual_comparison"])
+                mapping = style["visual_comparison_sources"]
+                pool = [{**item, "source": mapping.get(item["source"], item["source"])} for item in combine(pool, archive)
+                        if sources.canonical(item["url"]) in keys]
             pool = sorted(pool, key=lambda card: sources.canonical(card["url"]))
             captured_urls = {sources.canonical(item["url"]): item for item in snapshot["items"]} if snapshot else {}
             inputs = {"schedule": [[date.isoformat(), theme] for date, theme in selections], "count": count,
@@ -818,7 +996,7 @@ def main():
                       "cards_outside_harvest": [item for item in pool if captured_urls.get(sources.canonical(item["url"])) != item]}
             verify = not args.offline
             if replay:
-                verify = LinkChecks(replay=replay["checks"])
+                verify = LinkChecks(replay=replay["checks"], allow_new=args.comparison)
                 inputs["theme_explicit"] = replay["theme_explicit"]
             elif args.examples and verify:
                 worth_checking = {}

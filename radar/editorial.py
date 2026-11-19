@@ -464,11 +464,14 @@ def display_card(candidate, config, url_check):
     footer = f"{link(label, item['url'])}{duration}"
     if source_line:
         footer += " · " + source_line
-    return {"heading": heading, "title": title, "footer": footer,
+    byline = " · ".join(filter(None, (item.get("duration") if item["kind"] == "video" else None,
+                                      credit if credit.casefold() not in title.casefold() else None,
+                                      artist if russian else None)))
+    return {"heading": heading, "title": title, "footer": footer, "action": label, "byline": byline,
             "summaries": summary_options(item, custom), "image": image}
 
 
-def render(picked, config, theme=None, url_check=None, now=None):
+def issue_layout(picked, config, theme, url_check, now):
     date = (now or dt.datetime.now(MOSCOW)).astimezone(MOSCOW).date()
     date_text = f"{date.day} {MONTHS[date.month - 1]} {date.year}"
     header = [f"<b>Art Radar · {date_text}</b>", f"<i>{SLOGAN}</i>"]
@@ -482,6 +485,30 @@ def render(picked, config, theme=None, url_check=None, now=None):
         ordered.remove(lead)
         ordered.insert(0, lead)
     cards = [display_card(candidate, config, url_check) for candidate in ordered]
+    return header, ordered, cards, date_text
+
+
+def render_visual(picked, config, theme, now):
+    header, ordered, cards, _ = issue_layout(picked, config, theme, None, now)
+    presentation = config.get("presentation", {})
+    images = presentation.get("visual_images", {})
+    cover_images = presentation.get("cover_images", {})
+    output = []
+    for candidate, card in zip(ordered, cards):
+        asset = cover_images.get(candidate.key) or card["image"]
+        pictures = [*([asset] if asset else []), *images.get(candidate.key, [])]
+        if candidate.item.get("image") and not pictures:
+            approved = sources.images(candidate.item, config)
+            pictures = [approved] if approved else []
+        summary = next((value for value in card["summaries"] if value and length(html.escape(value)) <= 200), "")
+        output.append({"section": card["heading"], "title": card["title"], "summary": summary,
+                       "byline": card["byline"], "action": card["action"], "url": candidate.item["url"],
+                       "images": pictures[:4]})
+    return {"header": "\n".join(header), "cards": output}
+
+
+def render(picked, config, theme=None, url_check=None, now=None):
+    header, ordered, cards, date_text = issue_layout(picked, config, theme, url_check, now)
     credits = []
     for image in {card["image"]["url"]: card["image"] for card in cards if card["image"]}.values():
         license_name = image["license"]
