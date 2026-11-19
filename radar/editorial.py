@@ -364,7 +364,8 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None):
             if (shortage > 0 and len(picked) >= 2 and card.stream != "general" and not streams[card.stream]
                     and card.fresh and card.score >= config["extra_score"]):
                 stream_balance += 12
-            rating = (card.score + balance + boost + freshness - 8 * rubrics[card.direction]
+            visual = (card.item.get("journal_visual") or {}).get("quality", 0)
+            rating = (card.score + visual + balance + boost + freshness - 8 * rubrics[card.direction]
                       - min(24, 7 * month_providers[card.publisher])
                       + (3 if card.russian == russian_needed else 0) + artist_boost + style_boost + stream_balance)
             return featured, rating
@@ -490,7 +491,7 @@ def issue_layout(picked, config, theme, url_check, now):
     return header, ordered, cards, date_text
 
 
-def visual_assets(item, config):
+def visual_assets(item, config, all_candidates=False):
     presentation = config.get("presentation", {})
     key = sources.canonical(item["url"])
     custom = presentation.get("cards", {}).get(key, {})
@@ -498,6 +499,8 @@ def visual_assets(item, config):
                 sources.images({**item, **custom}, config), sources.images(item, config)]
     approved = presentation.get("visual_images", {}).get(key, [])
     pictures = {image["url"]: image for image in [*baseline, *approved] if image}
+    if all_candidates:
+        return list(pictures.values())
     role_order = {"artwork": 0, "video_frame": 1, "video_preview": 1, "portrait": 3}
     if item["kind"] == "video":
         role_order.update(artwork=1, video_frame=0, video_preview=0)
@@ -520,11 +523,13 @@ def render_visual(picked, config, theme, now):
         summary = article["summary"] if article else next(
             (value for value in card["summaries"] if value and length(html.escape(value)) <= 200), "")
         section = "🎨 Художник в поле зрения" if feature and article else custom.get("section", card["heading"])
+        checked = item.get("journal_visual")
         output.append({"section": section, "artist": feature if article else None, "title": card["title"],
                        "summary": summary, "article": bool(article), "byline": card["byline"],
                        "action": "Читать оригинал" if article else card["action"],
-                       "url": article["url"] if article else item["url"], "images": visual_assets(item, config),
-                       "video": custom.get("native_video") if item["kind"] == "video" else None})
+                       "url": article["url"] if article else item["url"],
+                       "images": checked["images"] if checked else visual_assets(item, config),
+                       "video": checked["video"] if checked else custom.get("native_video") if item["kind"] == "video" else None})
     return {"header": "\n".join(header), "cards": output}
 
 
@@ -559,7 +564,10 @@ def render(picked, config, theme=None, url_check=None, now=None):
     if length(text) > 4096:
         raise ValueError("Выпуск превышает лимит Telegram")
     cover_images = config.get("presentation", {}).get("cover_images", {})
-    cover = {"date": date_text, "tiles": [{"section": card["heading"].split(" ", 1)[-1],
-                                            "title": card["title"], "image": cover_images.get(candidate.key, card["image"])}
-                                           for card, candidate in zip(cards, ordered)]}
+    tiles = []
+    for card, candidate in zip(cards, ordered):
+        checked = candidate.item.get("journal_visual")
+        image = next(iter(checked["images"]), None) if checked else cover_images.get(candidate.key, card["image"])
+        tiles.append({"section": card["heading"].split(" ", 1)[-1], "title": card["title"], "image": image})
+    cover = {"date": date_text, "tiles": tiles}
     return text, cover

@@ -34,9 +34,8 @@ def is_russian(text):
     return bool(letters) and sum(bool(sources.CYRILLIC.fullmatch(letter)) for letter in letters) / len(letters) >= .8
 
 
-def public_article(url, domains, robots_cache):
+def public_page(url, domains, robots_cache):
     from protego import Protego
-    from trafilatura import extract
 
     if not sources.allowed(url, domains):
         return None
@@ -62,6 +61,16 @@ def public_article(url, domains, robots_cache):
     if any(str(n.get("isAccessibleForFree", "true")).lower() in {"no", "false", "0"}
            for n in artist_pages.records(page.structure)):
         return None
+    return text, page
+
+
+def public_article(url, domains, robots_cache):
+    from trafilatura import extract
+
+    result = public_page(url, domains, robots_cache)
+    if not result:
+        return None
+    text, _ = result
     content = extract(text, include_comments=False, include_tables=False, favor_precision=True,
                       target_language="ru") or ""
     paragraphs = [line.strip() for line in content.splitlines() if len(line.split()) >= 9]
@@ -115,12 +124,12 @@ def verified_summary(draft, original, exact_names=False):
 
 
 class ArticleChecks:
-    def __init__(self, config, saved=None, read=public_article, model=None):
+    def __init__(self, config, saved=None, read=public_article, model=None, allow_new=False):
         self.available = config.get("article_domains", [])
         self.editions = config.get("russian_editions", {})
         self.reviewed = config.get("article_edits", {})
         self.results = {} if saved is None else dict(saved)
-        self.replay = saved is not None
+        self.replay = saved is not None and not allow_new
         self.read = read
         self.robots = {}
         self.model = LocalEditor() if model is None else model

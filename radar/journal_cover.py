@@ -1,5 +1,6 @@
 """Artwork and typography for the journal's shared Telegram cover."""
 
+import hashlib
 import io
 from pathlib import Path
 
@@ -69,18 +70,26 @@ def artwork(asset, domains):
         asset = {**asset, "license": "Public Domain"}
     licensed = sources.images({"image": asset}, {"image_domains": domains})
     if asset.get("license") == "CC BY-SA 4.0":
+        origin = asset.get("source", "")
+        admitted = sources.allowed(origin, ["commons.wikimedia.org"]) or (
+            asset.get("license_url", "").rstrip("/") == f"https://{COLLECTION_LICENSE}" and sources.allowed(origin, domains))
         licensed = (asset.get("credit") and sources.allowed(asset.get("url", ""), domains)
-                    and sources.allowed(asset.get("source", ""), ["commons.wikimedia.org"]))
+                    and admitted)
     if not licensed:
         return None
     try:
         body, mime = sources.request(asset["url"], domains, 5_000_001, user_agent=COVER_AGENT)
         if len(body) > 5_000_000 or not mime.startswith("image/"):
             return None
+        digest = hashlib.sha256(body).hexdigest()
+        if asset.get("sha256") and asset["sha256"] != digest:
+            return None
         with Image.open(io.BytesIO(body)) as image:
             if image.width * image.height > 24_000_000 or not 0.125 <= image.width / image.height <= 8:
                 return None
-            return ImageOps.exif_transpose(image).convert("RGBA")
+            original = ImageOps.exif_transpose(image).convert("RGBA")
+            original.info["art_radar_sha256"] = digest
+            return original
     except (OSError, ValueError, Image.DecompressionBombError):
         return None
 

@@ -8,9 +8,11 @@ import unittest
 import urllib.error
 from contextlib import closing, redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from radar import editorial, editorial_sources as sources, journal_articles, journal_cover, telegram_journal as journal, visual_issue
+from radar import (artist_pages, editorial, editorial_sources as sources, journal_articles, journal_cover, journal_visuals,
+                   telegram_journal as journal, visual_issue)
 
 NOW = dt.datetime(2026, 11, 18, 19, tzinfo=journal.MOSCOW)
 CONFIG = sources.read(sources.ROOT / "sources.json")
@@ -136,7 +138,8 @@ class EditorialTest(unittest.TestCase):
         asset = {"url": "https://images.metmuseum.org/example.jpg", "license": "CC0", "credit": "Музей"}
         images = [[(asset, b"jpg"), (asset, b"jpg2")], [(asset, b"jpg")], [], [(asset, b"jpg")]]
         with patch.object(journal, "visual_photos", side_effect=images):
-            [(method, data, files)] = journal.visual_packets(visual_issue.make_plan(issue, "rich"), "42", None, CONFIG)
+            [(method, data, files)] = journal.visual_packets(visual_issue.make_plan(issue, "rich"), "42", None,
+                                                            {**CONFIG, "visual_selection": False})
         self.assertEqual(method, "sendRichMessage")
         self.assertEqual(len(files), 4)
         self.assertEqual(data["rich_message"].count("<tg-button type="), 4)
@@ -153,6 +156,85 @@ class EditorialTest(unittest.TestCase):
         figures = [(str(i), {"aspect": ratio}) for i, ratio in enumerate((1.2, .73, 1.4, 1.1, 3.0))]
         rows = visual_issue.mosaic_rows(figures)
         self.assertEqual([[identifier for identifier, _ in row] for row in rows], [["1", "0", "2", "3"], ["4"]])
+
+    def test_visual_rules_require_art_that_matches_the_material(self):
+        building = {"role": "venue", "credit": "Фасад музея"}
+        painting = {"role": "artwork", "credit": "Портрет неизвестной, масло на холсте"}
+        photograph = {"role": "art_photograph", "credit": "Фотография из серии «Память»"}
+        rooms = {"role": "interior", "credit": "Пустой зал галереи"}
+        display = {"role": "exhibition_view", "credit": "Вид экспозиции с работами участников"}
+        for topic in ("artist", "event", "fair", "exhibition", "photography"):
+            self.assertIsNone(journal_visuals.role_for(building, topic))
+            self.assertIsNone(journal_visuals.role_for(rooms, topic))
+        self.assertEqual(journal_visuals.role_for(building, "architecture"), "venue")
+        self.assertEqual(journal_visuals.role_for(painting, "fair"), "artwork")
+        self.assertEqual(journal_visuals.role_for(painting, "artist"), "artwork")
+        self.assertEqual(journal_visuals.role_for(display, "event"), "exhibition_view")
+        self.assertEqual(journal_visuals.role_for(photograph, "photography"), "art_photograph")
+        self.assertIsNone(journal_visuals.role_for(painting, "photography"))
+        self.assertIsNone(journal_visuals.role_for({"role": "artwork", "credit": "Логотип музея"}, "artist"))
+        card = SimpleNamespace(item={"kind": "article", "title": "Выставка открылась в музее архитектуры"}, direction="news")
+        self.assertEqual(journal_visuals.subject(card, {}), "exhibition")
+
+    def test_art_selection_excludes_facades_before_editing_and_uses_other_candidates(self):
+        raw = fresh()
+        rejected = raw[1]
+        valid = {"subject": "video", "reason": "", "images": [{"url": "https://images.metmuseum.org/photo.jpg",
+                "license": "CC0", "credit": "Изображение", "role": "video_frame", "sha256": "b" * 64}], "video": None, "quality": 1}
+        refused = {"subject": "exhibition", "images": [], "video": None, "quality": 0,
+                   "reason": "Нет подходящего изображения с подтверждёнными правами"}
+        visuals = Mock()
+        visuals.check.side_effect = lambda card: refused if card.key == sources.canonical(rejected["url"]) else valid
+        article_editor = Mock()
+        picked, issue = journal.prepare(raw, CONFIG, [], NOW, None, 1, verify=False,
+                                        article_checks=article_editor, visual_checks=visuals)
+        article_editor.check.assert_not_called()
+        self.assertEqual(len(picked), 3)
+        row = next(row for row in issue["items"] if row["url"] == rejected["url"])
+        self.assertEqual(row["decision"], refused["reason"])
+        self.assertTrue(journal.verified_visual_issue(issue["visual"]))
+        self.assertTrue(all(card["images"] == valid["images"] for card in issue["visual"]["cards"]))
+
+    def test_publisher_media_requires_explicit_license_and_is_scoped_to_the_article(self):
+        url = "https://example.org/article"
+        directive = {"@type": "Article", "url": url, "license": "https://creativecommons.org/licenses/by/4.0/",
+                     "image": [{"@id": "#art"}, {"@type": "ImageObject", "url": "/no-grant.jpg", "creditText": "Художник",
+                               "caption": "Холст, масло"}]}
+        graph = {"@graph": [directive, {"@id": "#art", "@type": "ImageObject", "contentUrl": "/art.jpg",
+                                      "creator": {"name": "Художник"}, "caption": "Акварель на бумаге",
+                                      "license": "https://creativecommons.org/licenses/by-sa/4.0/"},
+                             {**directive, "url": "https://example.org/unrelated"}]}
+        page = artist_pages.parse('<script type="application/ld+json">' + json.dumps(graph) + '</script>')
+        [asset] = journal_visuals.publisher_images(page, url, ["example.org"])
+        self.assertEqual(asset["url"], "https://example.org/art.jpg")
+        self.assertEqual(asset["license"], "CC BY-SA 4.0")
+        self.assertEqual(journal_visuals.role_for(asset, "exhibition"), "artwork")
+
+    def test_visual_check_technique_requires_both_process_and_result(self):
+        card = SimpleNamespace(item={"url": "https://example.org/lesson", "kind": "article", "title": "Урок живописи"},
+                               source={"domains": ["example.org"]}, key="https://example.org/lesson", direction="practice")
+        asset = {"url": "https://example.org/result.jpg", "role": "technique_result", "license": "CC0", "credit": "Картина"}
+        process = {**asset, "role": "creative_process", "url": "https://example.org/process.jpg", "credit": "Работа над картиной"}
+        cfg = {"presentation": {"visual_images": {card.key: [asset]}}, "image_domains": ["example.org"]}
+
+        def downloaded(assets):
+            return [({**item, "width": 1200, "height": 800, "sha256": hashlib.sha256(item["url"].encode()).hexdigest()}, b"img")
+                    for item in assets]
+
+        checks = journal_visuals.VisualChecks(cfg, downloaded, lambda _: None)
+        self.assertIn("процесса и результата", checks.check(card)["reason"])
+        cfg["presentation"]["visual_images"][card.key].append(process)
+        checks = journal_visuals.VisualChecks(cfg, downloaded, lambda _: None)
+        self.assertEqual({item["role"] for item in checks.check(card)["images"]}, {"creative_process", "technique_result"})
+        unreadable = journal_visuals.VisualChecks(cfg, lambda assets: [], lambda _: None)
+        self.assertIn("файла", unreadable.check(card)["reason"])
+
+    def test_delivery_cannot_silently_drop_a_verified_attachment(self):
+        card = {"url": "https://example.org/entry", "images": [{"sha256": "a" * 64}], "video": None}
+        plan = [{"kind": "rich", "header": "Art Radar", "cards": [card]}]
+        with patch.object(journal, "visual_photos", return_value=[]):
+            with self.assertRaisesRegex(ValueError, "изменились или недоступны"):
+                journal.visual_packets(plan, "42", None, CONFIG)
 
     def test_text_card_keeps_editorial_paragraphs_and_a_small_source_link(self):
         card = {"section": "Художник", "artist": "Валентин Серов", "title": "Приёмы портрета", "article": True,
@@ -342,7 +424,7 @@ class JournalTest(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.folder.cleanup)
         self.path = Path(self.folder.name) / "journal.sqlite3"
-        self.config = {**CONFIG, "theme_every": 0, "article_domains": []}
+        self.config = {**CONFIG, "theme_every": 0, "article_domains": [], "visual_selection": False}
         self.quiet = redirect_stdout(io.StringIO())
         self.quiet.__enter__()
         self.addCleanup(self.quiet.__exit__, None, None, None)

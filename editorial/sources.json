@@ -11,6 +11,7 @@
   "max_items": 4,
   "theme_every": 0,
   "previously_published": [],
+  "visual_selection": true,
   "article_domains": [
     "arzamas.academy",
     "lavrus.tretyakov.ru",
@@ -143,26 +144,6 @@
           "license": "Public domain",
           "credit": "Валентин Серов, «Девочка с персиками» · Третьяковская галерея",
           "role": "artwork"
-        }
-      ],
-      "https://theartnewspaper.ru/posts/20261119-swzp": [
-        {
-          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e8/Multimedia_Art_Museum%2C_Moscow_2022_May.jpg/1920px-Multimedia_Art_Museum%2C_Moscow_2022_May.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
-          "source": "https://commons.wikimedia.org/?curid=118198991",
-          "aspect": 1,
-          "license": "CC BY-SA 4.0",
-          "credit": "Здание МАММ на Остоженке, 2022 · фото JukoFF",
-          "role": "venue"
-        }
-      ],
-      "https://artuzel.com/content/s-4-po-6-dekabrya-v-prostranstve-ton-centr-proydet-vtoroy-vypusk-yarmarki-grafiki-oberton": [
-        {
-          "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/10/%D0%9A%D1%80%D1%83%D0%B3%D0%BE%D0%B2%D0%BE%D0%B5_%D0%B4%D0%B5%D0%BF%D0%BE_%D0%9D%D0%B8%D0%BA%D0%BE%D0%BB%D0%B0%D0%B5%D0%B2%D1%81%D0%BA%D0%BE%D0%B9_%D0%B6%D0%B5%D0%BB%D0%B5%D0%B7%D0%BD%D0%BE%D0%B9_%D0%B4%D0%BE%D1%80%D0%BE%D0%B3%D0%B8_%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0_2024.png/1920px-%D0%9A%D1%80%D1%83%D0%B3%D0%BE%D0%B2%D0%BE%D0%B5_%D0%B4%D0%B5%D0%BF%D0%BE_%D0%9D%D0%B8%D0%BA%D0%BE%D0%BB%D0%B0%D0%B5%D0%B2%D1%81%D0%BA%D0%BE%D0%B9_%D0%B6%D0%B5%D0%BB%D0%B5%D0%B7%D0%BD%D0%BE%D0%B9_%D0%B4%D0%BE%D1%80%D0%BE%D0%B3%D0%B8_%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0_2024.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
-          "source": "https://commons.wikimedia.org/?curid=153152143",
-          "aspect": 1.5098,
-          "license": "CC BY-SA 4.0",
-          "credit": "Круговое депо, где пройдёт «Обертон», 2024 · фото Никонико962",
-          "role": "venue"
         }
       ],
       "https://rutube.ru/video/7bf028a6d5da62e4ff4979993ed9405d": [
