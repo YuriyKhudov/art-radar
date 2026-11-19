@@ -65,6 +65,8 @@ def artwork(asset, domains):
 
     if not asset:
         return None
+    if asset.get("license", "").casefold() == "public domain":
+        asset = {**asset, "license": "Public Domain"}
     licensed = sources.images({"image": asset}, {"image_domains": domains})
     if asset.get("license") == "CC BY-SA 4.0":
         licensed = (asset.get("credit") and sources.allowed(asset.get("url", ""), domains)

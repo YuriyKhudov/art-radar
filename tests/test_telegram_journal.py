@@ -182,6 +182,14 @@ class EditorialTest(unittest.TestCase):
         read.assert_called_once_with("https://example.ru/translation", ["example.ru"], {})
         model.complete.assert_not_called()
 
+    def test_automatic_summary_does_not_change_an_artists_name(self):
+        original = ["В программу вошли работы Александры Гарт, которые будут представлены на стенде галереи.",
+                    "На специальном показе издательство представит графику, изготовленную методом шелкографии, и познакомит посетителей с работой мастерской."]
+        draft = {"paragraphs": [
+            {"text": "Александр Гарт представлен серией работ, отобранных для отдельного стенда художественной галереи.", "evidence": [1]},
+            {"text": "Отдельная часть события знакомит зрителей с мастерской и с тем, как издатели используют шелкографию в выставочных проектах.", "evidence": [2]}]}
+        self.assertIsNone(journal_articles.verified_summary(draft, original, exact_names=True))
+
     def test_transmission_switches_to_classic_only_for_explicit_unsupported_response(self):
         rich = ("sendRichMessage", {}, [])
         classic = ("sendMessage", {}, [])
@@ -517,6 +525,22 @@ class JournalTest(unittest.TestCase):
             self.assertIn(b"original", request.data)
             self.assertIn(b'name="caption"', request.data)
             self.assertNotIn(b"link_preview_options", request.data)
+
+    def test_private_update_edits_only_the_confirmed_issue_from_the_same_chat(self):
+        picked, _ = editorial.assess(fresh(), CONFIG, NOW)
+        issue = editorial.render_visual(picked, CONFIG, None, NOW)
+        payload = {"verified_links": True, "issues": [{"visual": issue}]}
+        private_db = self.path.with_name("private.sqlite3")
+        with (patch.object(journal, "confirmed_test_chat", return_value=("bot", "42")) as chat,
+              patch.object(journal, "send_request", return_value=32) as sender, redirect_stdout(io.StringIO())):
+            journal.test_visual_delivery(payload, private_db, Mock(), CONFIG, "rich")
+            journal.test_visual_delivery(payload, private_db, Mock(), CONFIG, "rich", update=True)
+            self.assertEqual([call.args[0] for call in sender.call_args_list], ["sendRichMessage", "editMessageText"])
+            self.assertEqual(sender.call_args.args[1]["message_id"], 32)
+            chat.return_value = ("bot", "43")
+            with self.assertRaisesRegex(ValueError, "подтверждённый личный выпуск"):
+                journal.test_visual_delivery(payload, private_db, Mock(), CONFIG, "rich", update=True)
+            self.assertEqual(sender.call_count, 2)
 
     def test_visual_delivery_never_resends_a_confirmed_or_unconfirmed_card(self):
         path = self.path

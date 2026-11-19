@@ -590,7 +590,7 @@ def send_request(method, data, token, files=()):
             result = json.load(response)
         if result.get("ok") and int(result["result"]["message_id"]) > 0:
             message = result["result"]
-            if data.get("disable_notification") == "true":
+            if data.get("disable_notification") == "true" or method == "editMessageText":
                 blocks = (message.get("rich_message") or {}).get("blocks", [])
                 mosaics = [block for block in blocks if block.get("type") == "collage"]
                 photos = sum(block.get("type") == "photo" for block in blocks)
@@ -841,7 +841,7 @@ def test_delivery(audit, db, persist, artifacts=None):
     print(f"Тестовый выпуск доставлен в личный чат. Номер сообщения {message_id}.")
 
 
-def test_visual_delivery(audit, db, persist, config, variant):
+def test_visual_delivery(audit, db, persist, config, variant, update=False):
     issues = audit.get("issues", [])
     if len(issues) != 1 or not audit.get("verified_links") or not issues[0].get("visual"):
         raise ValueError("Нужен визуальный выпуск из проверенного предпросмотра.")
@@ -849,6 +849,10 @@ def test_visual_delivery(audit, db, persist, config, variant):
     token, chat = confirmed_test_chat()
     plan = visual_issue.make_plan(issue, variant)
     packets = visual_packets(plan, chat, None, config)
+    if variant == "rich":
+        expected = sum(1 if card.get("video") else len(card["images"]) for card in issue["cards"])
+        if len(packets[0][2]) != expected:
+            raise ValueError(f"В тестовом Rich Messages не хватает вложений: {len(packets[0][2])} из {expected}.")
     fallback = classic_fallback(plan, chat, None, config)
     db.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(db, timeout=15)) as connection:
@@ -857,6 +861,17 @@ def test_visual_delivery(audit, db, persist, config, variant):
         outbox = visual_issue.Deliveries(connection)
         identity = json.dumps(plan, sort_keys=True, ensure_ascii=False)
         key = hmac.new(token.encode(), f"{chat}\n{variant}\n{identity}".encode(), hashlib.sha256).hexdigest()
+        if update:
+            receipt = connection.execute("SELECT telegram_id FROM visual_slots WHERE batch=? AND slot=1", (key,)).fetchone()
+            if variant != "rich" or not receipt or not receipt[0] or outbox.plan(key) != plan:
+                raise ValueError("Для обновления нужен ранее подтверждённый личный выпуск с тем же планом.")
+            _, data, files = packets[0]
+            edited = send_request("editMessageText", {"chat_id": chat, "message_id": receipt[0],
+                                  "rich_message": data["rich_message"]}, token, files)
+            if edited != receipt[0]:
+                raise ValueError("Telegram вернул другой номер сообщения для обновления.")
+            print(f"Личный тест · обновлено сообщение {edited}.")
+            return
         with connection:
             if outbox.plan(key) is None:
                 outbox.record(key, plan)
@@ -990,6 +1005,7 @@ def main():
     test_send.add_argument("--audit", type=Path, required=True)
     test_send.add_argument("--test-db", type=Path, default=DEFAULT_TEST_DB)
     test_send.add_argument("--variant", choices=("legacy", "rich", "classic"), default=visual_issue.DEFAULT_FORMAT)
+    test_send.add_argument("--update", action="store_true", help="Обновить уже подтверждённый личный Rich Messages")
     reconcile = commands.add_parser("reconcile", help="Сверка с Telegram после прерванной отправки")
     reconcile.add_argument("issue", type=int)
     outcome = reconcile.add_mutually_exclusive_group(required=True)
@@ -997,6 +1013,8 @@ def main():
     outcome.add_argument("--absent", action="store_true")
     args = parser.parse_args()
     if args.command == "test-send":
+        if args.update and args.variant != "rich":
+            parser.error("--update применяется к ранее отправленному Rich Messages")
         db = args.test_db.resolve()
         if db == args.db.resolve() or db == DEFAULT_DB.resolve():
             parser.error("История тестов хранится в отдельной базе")
@@ -1005,7 +1023,7 @@ def main():
         if args.variant == "legacy":
             test_delivery(audit, db, persist_test, args.audit.parent)
         else:
-            test_visual_delivery(audit, db, persist_test, sources.read(sources.ROOT / "sources.json"), args.variant)
+            test_visual_delivery(audit, db, persist_test, sources.read(sources.ROOT / "sources.json"), args.variant, args.update)
         return
     if args.command == "preview" and args.selection and (not args.snapshot or args.offline or args.artist_search):
         parser.error("--selection требует --snapshot и использует сохранённые сетевые проверки")
