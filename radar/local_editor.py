@@ -1,9 +1,10 @@
-"""Run a pinned open-weight editor locally. Article text stays on the runner."""
+"""Completion clients for Art Radar's article editor."""
 
 import atexit
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -13,6 +14,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from zipfile import ZipFile
+
+from radar.editorial_sources import Redirects
 
 
 VERSION = "b6817"
@@ -24,6 +27,68 @@ BUILDS = {
     "win32": ("win-cpu-x64", "a1d6cabeb420c8aa8ce7e7ae8cf76a531cc59470dafacb4f99d42c2613aee826"),
     "linux": ("ubuntu-x64", "b4408b30b6e87ad951629f674dc69fbc199a7ab4b6ccbd54eb8b4c5b4fd7da81"),
 }
+
+GROQ_MODEL = "openai/gpt-oss-120b"
+GROQ_KEY_ENV = "ART_RADAR_GROQ_API_KEY"
+
+
+class GroqEditor:
+    """Use the same completion interface with a single Groq Free project."""
+
+    def __init__(self, key=None):
+        self._key = (os.getenv(GROQ_KEY_ENV, "") if key is None else key).strip()
+        self.http = urllib.request.build_opener(Redirects(["api.groq.com"]))
+        self.stop_reason = None if self._key else "key-missing"
+        self.last_error = self.stop_reason
+        self.calls = 0
+        self.remaining_tokens = None
+        self.reset_tokens_at = 0.0
+
+    def complete(self, system, payload, max_tokens, schema):
+        self.last_error = self.stop_reason
+        if self.stop_reason:
+            return None
+        content = json.dumps(payload, ensure_ascii=False)
+        completion_limit = max_tokens + 550
+        # Estimate conservatively and use the provider's current remaining-token header between calls.
+        estimate = (len(system.encode()) + len(content.encode())) // 2 + completion_limit
+        if self.remaining_tokens is not None and estimate > self.remaining_tokens:
+            remaining = self.reset_tokens_at - time.monotonic()
+            if 0 < remaining <= 60:
+                time.sleep(remaining + .1)
+        body = {"model": GROQ_MODEL, "messages": [{"role": "system", "content": system},
+                    {"role": "user", "content": content}], "reasoning_effort": "low", "reasoning_format": "hidden",
+                "max_completion_tokens": completion_limit,
+                "response_format": {"type": "json_schema", "json_schema": {"name": "article_edit", "strict": True,
+                                                                           "schema": schema}}}
+        request = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions", data=json.dumps(body).encode(),
+                                         headers={"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"})
+        self.calls += 1
+        try:
+            with self.http.open(request, timeout=60) as response:
+                tokens = response.headers.get("x-ratelimit-remaining-tokens", "")
+                reset = response.headers.get("x-ratelimit-reset-tokens", "")
+                match = re.fullmatch(r"(?:(\d+)m)?(\d+(?:\.\d+)?)s", reset)
+                if tokens.isdecimal() and match:
+                    self.remaining_tokens = int(tokens)
+                    self.reset_tokens_at = time.monotonic() + 60 * int(match[1] or 0) + float(match[2])
+                value = json.loads(response.read(500_001))
+            choice = value["choices"][0]
+            if choice.get("finish_reason") != "stop":
+                self.last_error = "incomplete-response"
+                return None
+            result = json.loads(choice["message"]["content"])
+            if isinstance(result, dict):
+                return result
+        except urllib.error.HTTPError as error:
+            self.last_error = "quota-exhausted" if error.code == 429 else f"http-{error.code}"
+            if error.code in {400, 401, 403, 404, 429}:
+                self.stop_reason = self.last_error
+            return None
+        except (OSError, ValueError, KeyError, TypeError, IndexError):
+            pass
+        self.last_error = "invalid-response"
+        return None
 
 
 def sha256(path):

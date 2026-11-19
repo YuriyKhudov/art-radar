@@ -77,6 +77,10 @@ class Journal:
             CREATE TABLE IF NOT EXISTS feed_items (
                 url TEXT PRIMARY KEY, item TEXT NOT NULL, collected TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS prepared_images (
+                sha256 TEXT PRIMARY KEY, jpeg BLOB NOT NULL, checksum TEXT NOT NULL,
+                prepared TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS artist_discoveries (
                 id TEXT PRIMARY KEY, profile TEXT NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL
             );
@@ -100,6 +104,37 @@ class Journal:
 
     def put(self, name, value):
         self.conn.execute("INSERT OR REPLACE INTO settings VALUES (?, ?)", (name, value))
+
+    def prepared(self, stage, card, config):
+        name = preparation_key(stage, card, config)
+        saved = json.loads(self.setting(name) or "null")
+        if saved and (stage != "visual" or now_moscow().date() - dt.date.fromisoformat(saved["date"]) <= dt.timedelta(days=14)):
+            return saved["result"]
+        return None
+
+    def remember(self, stage, card, config, result):
+        with self.conn:
+            self.put(preparation_key(stage, card, config), encode({"date": now_moscow().date().isoformat(), "result": result}))
+
+    def remember_images(self, files):
+        if not files:
+            return
+        now = now_moscow().isoformat()
+        with self.conn:
+            self.conn.executemany("INSERT OR REPLACE INTO prepared_images VALUES (?, ?, ?, ?)",
+                                  [(digest, body, hashlib.sha256(body).hexdigest(), now)
+                                   for digest, body in files.items() if len(body) <= 2_000_000])
+            self.conn.execute("DELETE FROM prepared_images WHERE sha256 IN (SELECT sha256 FROM prepared_images "
+                              "ORDER BY prepared DESC, sha256 LIMIT -1 OFFSET 24)")
+
+    def prepared_image(self, asset):
+        digest = asset.get("sha256")
+        row = self.conn.execute("SELECT jpeg, checksum, prepared FROM prepared_images WHERE sha256=?", (digest,)).fetchone()
+        if row and now_moscow() - dt.datetime.fromisoformat(row[2]) <= dt.timedelta(days=14):
+            image, checksum, _ = row
+            if hashlib.sha256(image).hexdigest() == checksum:
+                return asset, image
+        return None
 
     def daily(self, config, now):
         today = now.date().isoformat()
@@ -291,8 +326,22 @@ def load_harvest(paths, config):
             "items": items}
 
 
+def preparation_key(stage, card, config):
+    keys = ("original_title", "title", "evidence", "published", "language", "image")
+    material = {key: card.item.get(key) for key in keys}
+    if stage == "article":
+        settings = [journal_articles.EDITORIAL_VERSION, config.get("russian_editions", {}).get(card.key),
+                    config.get("article_edits", {}).get(card.key)]
+    else:
+        presentation = config.get("presentation", {})
+        settings = [journal_visuals.POLICY, config.get("extended_illustrations"), config.get("video_link_fallback"),
+                    *(presentation.get(key, {}).get(card.key) for key in ("cards", "cover_images", "visual_images"))]
+    digest = hashlib.sha256(encode([card.key, card.source["id"], material, settings]).encode()).hexdigest()
+    return f"prepared:{stage}:{digest}"
+
+
 def prepare(pool, config, history, now, theme, sequence, verify, article_checks=None, visual_checks=None, reserve=None,
-            replay_reserve=False):
+            replay_reserve=False, journal=None):
     history = [*history, *({"url": url, "title": "", "source": ""} for url in config.get("previously_published", []))]
     if reserve is not None:
         pool = combine(pool, reserve.pool(now))
@@ -300,6 +349,11 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
     if visual_checks:
         candidates = [card for card in cards if not theme or theme in card.item.get("topics", [])]
         checked_cards = []
+        if journal:
+            for card in candidates:
+                if card.key not in visual_checks.results and (saved := journal.prepared("visual", card, config)):
+                    visual_checks.results[card.key] = saved
+        unchecked = {card.key for card in candidates if card.key not in visual_checks.results} if journal else set()
         # Network access is bounded per source; results are reused between issues in the same run.
         with ThreadPoolExecutor(max_workers=6) as workers:
             results = list(workers.map(visual_checks.check, candidates))
@@ -310,13 +364,29 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
                 excluded.append(audit)
             else:
                 checked_cards.append(replace(card, item={**card.item, "journal_visual": review}))
+                if journal and card.key in unchecked and (review["images"] or review["video"]):
+                    journal.remember("visual", card, config, review)
+        if journal:
+            journal.remember_images(visual_checks.files)
+            visual_checks.files.clear()
         cards = checked_cards
     url_check = check if verify is True else verify or None
     verified = {}
 
+    def edit_article(card):
+        if journal and card.key not in article_checks.results:
+            if saved := journal.prepared("article", card, config):
+                article_checks.results[card.key] = saved
+                return saved
+            result = article_checks.check(card)
+            if result.get("summary"):
+                journal.remember("article", card, config, result)
+            return result
+        return article_checks.check(card)
+
     def validate(card):
         if card.key not in verified:
-            article = article_checks.check(card) if article_checks and card.item["kind"] != "video" else {}
+            article = edit_article(card) if article_checks and card.item["kind"] != "video" else {}
             verified[card.key] = article.get("reason") or (
                 True if article or not url_check else url_check(card.item["url"], card.source["domains"]))
         return verified[card.key]
@@ -336,7 +406,7 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
     if article_checks:
         for index, card in enumerate(picked):
             if card.item["kind"] != "video":
-                metadata = article_checks.check(card)
+                metadata = edit_article(card)
                 picked[index] = replace(card, item={**card.item, "journal_article": metadata})
                 row = selected_rows[card.item["url"]]
                 row["article_edit"] = {key: value for key, value in metadata.items() if key != "summary"}
@@ -765,15 +835,16 @@ def licensed_video(asset, config):
     return {**asset, "video": True, "sha256": digest}, data
 
 
-def check_visuals(config, saved=None, offline=False):
+def check_visuals(config, saved=None, offline=False, keep_files=False):
     if config.get("visual_selection"):
         domains = visual_domains(config)
         return journal_visuals.VisualChecks(config, lambda assets: visual_photos({"images": assets}, domains),
-                                           lambda asset: licensed_video(asset, config), saved=saved, offline=offline)
+                                           lambda asset: licensed_video(asset, config), saved=saved, offline=offline,
+                                           keep_files=keep_files)
     return None
 
 
-def visual_packets(plan, chat, thread, config, image_cache=None):
+def visual_packets(plan, chat, thread, config, image_cache=None, prepared_image=None):
     domains = visual_domains(config)
     image_cache = {} if image_cache is None else image_cache
 
@@ -781,7 +852,16 @@ def visual_packets(plan, chat, thread, config, image_cache=None):
         key = card["url"]
         if key not in image_cache:
             movie = licensed_video(card.get("video"), config)
-            image_cache[key] = [movie] if movie else visual_photos(card, domains)
+            if movie:
+                image_cache[key] = [movie]
+            elif prepared_image:
+                photos = []
+                for asset in card["images"]:
+                    cached = prepared_image(asset)
+                    photos.extend([cached] if cached else visual_photos({"images": [asset]}, domains))
+                image_cache[key] = photos
+            else:
+                image_cache[key] = visual_photos(card, domains)
         if config.get("visual_selection") and len(image_cache[key]) != (1 if card.get("video") else len(card["images"])):
             raise ValueError("Утверждённые иллюстрации изменились или недоступны. Выпуск не отправлен.")
         return image_cache[key]
@@ -1073,26 +1153,27 @@ def scheduled(journal, config, archive, persist):
         if config.get("visual_selection") and plan.get("visual_policy") not in {1, journal_visuals.POLICY}:
             raise ValueError("Ожидающий выпуск сформирован до проверки иллюстраций. Требуется сверка доставки.")
         entries = plan["entries"]
-        publish_visual(journal, pending, entries, visual_packets(entries, chat, thread, config), credentials, config, persist)
+        packets = visual_packets(entries, chat, thread, config, prepared_image=journal.prepared_image)
+        publish_visual(journal, pending, entries, packets, credentials, config, persist)
         return
     sequence = count + 1
     theme = next_theme(config, sequence)
     pool, history = combine(journal.items(), archive), journal.history()
     article_checks = journal_articles.ArticleChecks(config) if config.get("article_domains") else None
-    visuals = check_visuals(config)
+    visuals = check_visuals(config, keep_files=True)
     reserve = journal.editorial_reserve if config.get("accumulate_reserve") else None
     if reserve is not None:
         eligible, _ = editorial.assess(pool, config, now, history)
         with journal.conn:
             reserve.replenish(eligible, now, config["news_days"])
     picked, result = prepare(pool, config, history, now, theme, sequence, verify=True,
-                             article_checks=article_checks, visual_checks=visuals, reserve=reserve)
+                             article_checks=article_checks, visual_checks=visuals, reserve=reserve, journal=journal)
     if not picked and theme:
         picked, result = prepare(pool, config, history, now, None, sequence, verify=True,
-                                 article_checks=article_checks, visual_checks=visuals, reserve=reserve)
+                                 article_checks=article_checks, visual_checks=visuals, reserve=reserve, journal=journal)
     variant = os.getenv("ART_RADAR_JOURNAL_FORMAT") or visual_issue.DEFAULT_FORMAT
     plan = visual_issue.make_plan(result["visual"], variant) if picked and variant != "legacy" else None
-    packets = visual_packets(plan, chat, thread, config) if plan else []
+    packets = visual_packets(plan, chat, thread, config, prepared_image=journal.prepared_image) if plan else []
     reserved_plan = {"entries": plan, "destination": route, "visual_policy": result["visual"].get("policy")} if plan else None
     issue = journal.reserve(picked, now, time, interval, count, plan=reserved_plan)
     persist()
@@ -1124,7 +1205,7 @@ def main():
     preview.add_argument("--out", type=Path, default=Path("journal-preview"))
     preview.add_argument("--theme")
     preview.add_argument("--examples", action="store_true")
-    preview.add_argument("--automatic-issues", type=int, choices=(3,), default=0,
+    preview.add_argument("--automatic-issues", type=int, choices=(1, 3), default=0,
                          help="Три предпросмотра из автоматического сбора и изолированного резерва")
     preview.add_argument("--snapshot", type=Path, action="append",
                          help="Повторить отбор из одной или нескольких автоматических выгрузок")
@@ -1198,8 +1279,9 @@ def main():
     archive = sources.read(sources.ROOT / "materials.json")
     if args.command == "preview" and args.theme and args.theme not in config["themes"]:
         parser.error("Неизвестная тема. Доступные темы: " + ", ".join(config["themes"]))
-    db = args.db.resolve()
-    use_memory = args.command == "preview" and (args.examples or args.automatic_issues or not db.is_file())
+    automatic = args.command == "preview" and args.automatic_issues
+    db = ((args.out / "editorial.sqlite3") if automatic else args.db).resolve()
+    use_memory = args.command == "preview" and not automatic and (args.examples or not db.is_file())
     if not use_memory:
         db.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1307,7 +1389,9 @@ def main():
                 else:
                     article_checks = journal_articles.ArticleChecks(config, saved=replay.get("articles") if replay else None,
                                                                    allow_new=bool(replay and "visuals" not in replay))
-            visuals = check_visuals(config, saved=replay.get("visuals") if replay else None, offline=args.offline)
+            preparation_cache = journal if not (replay or args.offline or args.comparison) else None
+            visuals = check_visuals(config, saved=replay.get("visuals") if replay else None, offline=args.offline,
+                                    keep_files=preparation_cache is not None)
             issues = []
             reserve = None
             reserve_report = None
@@ -1329,11 +1413,11 @@ def main():
             for sequence, (as_of, theme) in enumerate(selections, count + 1):
                 picked, issue = prepare(pool, config, history, as_of, theme, sequence, verify=verify,
                                         article_checks=article_checks, visual_checks=visuals, reserve=reserve,
-                                        replay_reserve=bool(replay and replay.get("uses_reserve")))
+                                        replay_reserve=bool(replay and replay.get("uses_reserve")), journal=preparation_cache)
                 if not picked and theme and not inputs["theme_explicit"]:
                     picked, issue = prepare(pool, config, history, as_of, None, sequence, verify=verify,
                                             article_checks=article_checks, visual_checks=visuals, reserve=reserve,
-                                            replay_reserve=bool(replay and replay.get("uses_reserve")))
+                                            replay_reserve=bool(replay and replay.get("uses_reserve")), journal=preparation_cache)
                 issue["as_of"] = as_of.date().isoformat()
                 if args.automatic_issues:
                     issue["cover"] = None
@@ -1356,7 +1440,7 @@ def main():
             save_preview(args.out, issues, source_report, now.date().isoformat(), not args.offline, snapshot,
                          inputs if verify and snapshot else None, config.get("artist_radar"), reserve_report)
             if args.automatic_issues and any(not verified_visual_issue(issue.get("visual", {})) for issue in issues):
-                raise ValueError("Автоматическая проверка не собрала все три визуальных выпуска.")
+                raise ValueError("Автоматическая проверка не собрала запрошенные визуальные выпуски.")
 
 
 if __name__ == "__main__":

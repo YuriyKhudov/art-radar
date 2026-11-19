@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from radar import (artist_pages, editorial, editorial_sources as sources, journal_articles, journal_cover, journal_visuals,
-                   telegram_journal as journal, visual_issue)
+                   local_editor, telegram_journal as journal, visual_issue)
 
 NOW = dt.datetime(2026, 11, 18, 19, tzinfo=journal.MOSCOW)
 CONFIG = sources.read(sources.ROOT / "sources.json")
@@ -271,6 +271,63 @@ class EditorialTest(unittest.TestCase):
             {"text": "Александр Гарт представлен серией работ, отобранных для отдельного стенда художественной галереи.", "evidence": [1]},
             {"text": "Отдельная часть события знакомит зрителей с мастерской и с тем, как издатели используют шелкографию в выставочных проектах.", "evidence": [2]}]}
         self.assertIsNone(journal_articles.verified_summary(draft, original, exact_names=True))
+
+    def test_common_noun_before_surname_is_not_a_changed_given_name(self):
+        self.assertTrue(journal_articles.names_preserved("Картина Серова меняет характер парадного портрета.",
+                                                         "В работе Валентина Серова есть важная деталь."))
+        self.assertFalse(journal_articles.names_preserved("Михаил Репин строит композицию вокруг двери.",
+                                                          "Художник Илья Репин выстраивает сцену вокруг двери."))
+
+    def test_confirmed_work_title_is_not_counted_as_copied_prose(self):
+        title = "Весна пришла и растопила снег на деревьях и крышах города"
+        confirmed = {tuple(journal_articles.words(title))}
+        source = f"Критик обратился к картине «{title}» и сопоставил её с соседней работой."
+        draft = f"Цветовые пятна особенно заметны в картине «{title}», когда взгляд переводят от неба к крышам."
+        self.assertTrue(journal_articles.prose_ngrams(source, set()) & journal_articles.prose_ngrams(draft, set()))
+        self.assertFalse(journal_articles.prose_ngrams(source, confirmed) & journal_articles.prose_ngrams(draft, confirmed))
+
+    def test_groq_requests_only_the_selected_model_with_strict_json(self):
+        body = io.BytesIO(json.dumps({"choices": [{"finish_reason": "stop", "message": {
+            "content": '{"supported": true, "problems": []}'}}]}).encode())
+        body.headers = {}
+        editor = local_editor.GroqEditor("test-key")
+        editor.http.open = Mock(return_value=body)
+        schema = journal_articles.CHECK_SCHEMA
+        self.assertEqual(editor.complete("Проверь", {"summary": "Текст"}, 220, schema),
+                         {"supported": True, "problems": []})
+        request = editor.http.open.call_args.args[0]
+        data = json.loads(request.data)
+        self.assertEqual(data["model"], "openai/gpt-oss-120b")
+        self.assertEqual(request.full_url, "https://api.groq.com/openai/v1/chat/completions")
+        self.assertTrue(data["response_format"]["json_schema"]["strict"])
+
+    def test_groq_stops_new_requests_after_quota_error(self):
+        editor = local_editor.GroqEditor("test-key")
+        editor.http.open = Mock(side_effect=urllib.error.HTTPError("https://api.groq.com", 429, "test", {}, None))
+        for _ in range(2):
+            self.assertIsNone(editor.complete("Проверь", {}, 220, journal_articles.CHECK_SCHEMA))
+        self.assertEqual(editor.stop_reason, "quota-exhausted")
+        editor.http.open.assert_called_once()
+
+    def test_ready_article_is_reused_when_groq_quota_is_exhausted(self):
+        pool = fresh()
+        candidates, _ = editorial.assess(pool, CONFIG, NOW)
+        article = next(card for card in candidates if card.item["kind"] == "article")
+        prepared = {"summary": "Проверенный текст из резерва.", "url": article.item["url"],
+                    "verification": local_editor.GROQ_MODEL}
+        model = local_editor.GroqEditor("test-key")
+        model.stop_reason = "quota-exhausted"
+        model.http.open = Mock()
+        reader = Mock()
+        checks = journal_articles.ArticleChecks(CONFIG, model=model, read=reader)
+        with closing(sqlite3.connect(":memory:")) as connection:
+            saved = journal.Journal(connection)
+            saved.remember("article", article, CONFIG, prepared)
+            picked, result = journal.prepare(pool, CONFIG, [], NOW, None, 1, False, article_checks=checks, journal=saved)
+        self.assertTrue(picked)
+        self.assertTrue(any(card.get("summary") == prepared["summary"] for card in result["visual"]["cards"]))
+        reader.assert_not_called()
+        model.http.open.assert_not_called()
 
     def test_transmission_switches_to_classic_only_for_explicit_unsupported_response(self):
         rich = ("sendRichMessage", {}, [])

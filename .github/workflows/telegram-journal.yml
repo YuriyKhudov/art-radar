@@ -6,7 +6,7 @@ on:
       mode:
         description: Предпросмотр, диагностика API, личный тест или сверка с Telegram
         type: choice
-        options: [preview, automatic_preview, check_platforms, private_test, prepare_group, confirmed, absent]
+        options: [preview, automatic_preview, check_editor, check_platforms, private_test, prepare_group, confirmed, absent]
         default: preview
       issue:
         description: Номер выпуска для сверки
@@ -99,15 +99,14 @@ jobs:
           EXCLUDE_RUN_ID: ${{ inputs.exclude_run_id }}
           ILLUSTRATED: ${{ inputs.illustrated }}
           PREVIEW_URLS: ${{ inputs.preview_urls }}
-          ART_RADAR_RUN_LOCAL_EDITOR: '1'
-          ART_RADAR_EDITOR_CACHE: ${{ runner.temp }}/art-radar-editor
+          ART_RADAR_GROQ_API_KEY: ${{ secrets.ART_RADAR_GROQ_API_KEY }}
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
           JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
         run: |
           set -eu
           args=()
           if [[ "$MODE" == automatic_preview ]]; then
-            args+=(--automatic-issues 3)
+            args+=(--automatic-issues 1)
             python -m unittest discover -s tests -q
           fi
           if [[ -n "$EXCLUDE_RUN_ID" ]]; then args+=(--exclude-audit excluded-preview/audit.json); fi
@@ -116,6 +115,10 @@ jobs:
           for url in "${preview_urls[@]}"; do args+=(--only-url "$url"); done
           if [[ "$MODE" == automatic_preview && -n "$PREVIEW_RUN_ID" ]]; then
             args+=(--snapshot previous-preview/harvest.json)
+            if [[ -f previous-preview/editorial.sqlite3 ]]; then
+              mkdir -p journal-preview
+              cp previous-preview/editorial.sqlite3 journal-preview/editorial.sqlite3
+            fi
           else
             args+=(--refresh)
           fi
@@ -125,6 +128,28 @@ jobs:
         with:
           name: art-radar-journal-preview
           path: journal-preview/
+
+  check_editor:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'check_editor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'trafilatura==2.3.1' 'Protego==0.7.0'
+      - name: Проверить редактора на трёх статьях
+        env:
+          ART_RADAR_GROQ_API_KEY: ${{ secrets.ART_RADAR_GROQ_API_KEY }}
+        run: python -m radar.journal_articles
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() || failure() }}
+        with:
+          name: art-radar-editor-check
+          path: journal-preview/editor-check.json
 
   check_platforms:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'check_platforms'
@@ -263,8 +288,7 @@ jobs:
           ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
           ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
           ART_RADAR_JOURNAL_FORMAT: ${{ vars.ART_RADAR_JOURNAL_FORMAT }}
-          ART_RADAR_RUN_LOCAL_EDITOR: '1'
-          ART_RADAR_EDITOR_CACHE: ${{ runner.temp }}/art-radar-editor
+          ART_RADAR_GROQ_API_KEY: ${{ secrets.ART_RADAR_GROQ_API_KEY }}
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
           JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
           JOURNAL_TELEGRAM_TOKEN: ${{ secrets.JOURNAL_TELEGRAM_TOKEN }}

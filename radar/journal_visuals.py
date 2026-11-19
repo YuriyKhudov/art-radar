@@ -149,7 +149,8 @@ def publisher_images(page, page_url, domains):
 
 
 class VisualChecks:
-    def __init__(self, config, photos, video, pages=journal_articles.public_page, saved=None, offline=False):
+    def __init__(self, config, photos, video, pages=journal_articles.public_page, saved=None, offline=False,
+                 keep_files=False):
         self.config = config
         self.photos = photos
         self.video = video
@@ -158,6 +159,8 @@ class VisualChecks:
         self.offline = offline
         self.replay = saved is not None
         self.robots = {}
+        self.keep_files = keep_files
+        self.files = {}
 
     def check(self, card):
         if card.key not in self.results:
@@ -245,10 +248,12 @@ class VisualChecks:
             work = sources.clean(asset.get("work", "")).casefold()
             if not role or work and work in works:
                 continue
-            for validated, _ in self.photos([asset]):
+            for validated, body in self.photos([asset]):
                 short, long = sorted((validated["width"], validated["height"]))
                 if short >= 480 and long >= 700:
                     checked.setdefault(validated["sha256"], {**validated, "role": role})
+                    if self.keep_files:
+                        self.files[validated["sha256"]] = body
                     if work:
                         works.add(work)
             if len(checked) == 5:
