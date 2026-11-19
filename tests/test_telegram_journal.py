@@ -88,6 +88,33 @@ class EditorialTest(unittest.TestCase):
             self.assertEqual(composed.format, "JPEG")
             self.assertEqual(composed.width, 1080)
 
+    def test_cover_reflows_for_each_image_count(self):
+        profiles = [[1.5], [1.29, .51], [1.3, 1, .8], [.8, 1.3, 1], [1.2, .9, 1.5, .8]]
+        for profile in profiles:
+            with self.subTest(profile=profile):
+                boxes = journal_cover.photo_layout(profile, 1052)
+                self.assertEqual(len(boxes), len(profile))
+                for x, y, width, height in boxes:
+                    self.assertGreater(width, 0)
+                    self.assertGreater(height, 0)
+                    self.assertGreaterEqual(x, 0)
+                    self.assertGreaterEqual(y, 0)
+                    self.assertLessEqual(x + width, 1052)
+                for index, (x, y, width, height) in enumerate(boxes):
+                    for other_x, other_y, other_w, other_h in boxes[index + 1:]:
+                        self.assertTrue(x + width <= other_x or other_x + other_w <= x
+                                        or y + height <= other_y or other_y + other_h <= y)
+
+    def test_cover_only_images_do_not_change_the_message(self):
+        picked, _ = editorial.assess(fresh(), CONFIG, NOW)
+        baseline, _ = editorial.render(picked, CONFIG, now=NOW)
+        asset = {"url": "https://upload.wikimedia.org/example.jpg", "license": "CC BY-SA 4.0",
+                 "source": "https://commons.wikimedia.org/?curid=123", "credit": "Автор"}
+        presentation = {**CONFIG.get("presentation", {}), "cover_images": {picked[0].key: asset}}
+        text, cover = editorial.render(picked, {**CONFIG, "presentation": presentation}, now=NOW)
+        self.assertEqual(text, baseline)
+        self.assertEqual(cover["tiles"][0]["image"], asset)
+
     def test_recency_boundary_and_marketing(self):
         raw = fresh()
         promo = {**raw[0], "title": "Цветная пятница: скидки до 70% на уроки рисования"}

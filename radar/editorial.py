@@ -510,6 +510,8 @@ def render(picked, config, theme=None, url_check=None, now=None):
     text = assemble(summaries)
     if length(text) > 4096:
         raise ValueError("Выпуск превышает лимит Telegram")
+    cover_images = config.get("presentation", {}).get("cover_images", {})
     cover = {"date": date_text, "tiles": [{"section": card["heading"].split(" ", 1)[-1],
-                                            "title": card["title"], "image": card["image"]} for card in cards]}
+                                            "title": card["title"], "image": cover_images.get(candidate.key, card["image"])}
+                                           for card, candidate in zip(cards, ordered)]}
     return text, cover

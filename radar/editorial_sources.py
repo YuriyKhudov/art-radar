@@ -78,11 +78,11 @@ class Redirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def request(url, domains, limit):
+def request(url, domains, limit, *, user_agent="Mozilla/5.0 ArtRadarJournal/1.0"):
     if not allowed(url, domains):
         raise ValueError("Домен отсутствует в настройках источника")
     opener = urllib.request.build_opener(Redirects(domains))
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 ArtRadarJournal/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent})
     try:
         with opener.open(req, timeout=10) as response:
             return response.read(limit), response.headers.get_content_type()

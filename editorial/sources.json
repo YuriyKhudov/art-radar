@@ -24,6 +24,20 @@
       "Cathy Diamond": "Кэти Даймонд",
       "Kathleen Dunn Jacobs": "Кэтлин Данн Джейкобс"
     },
+    "cover_images": {
+      "https://youtube.com/watch?v=Lt4pX0ZhjsQ": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/7/76/%D0%92%D1%8F%D1%87%D0%B5%D1%81%D0%BB%D0%B0%D0%B2_%D0%9A%D0%BE%D1%80%D0%BE%D0%BB%D0%B5%D0%BD%D0%BA%D0%BE%D0%B2_%D0%BD%D0%B0_%D0%B2%D1%8B%D1%81%D1%82%D0%B0%D0%B2%D0%BA%D0%B5_%D0%B2_%D0%A6%D0%94%D0%A5.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "source": "https://commons.wikimedia.org/?curid=63261212",
+        "credit": "JuliusMir",
+        "license": "CC BY-SA 4.0"
+      },
+      "https://rutube.ru/video/be0461c53e9cb4bdfc8e56274507f39c": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/6/69/%22%D0%A2%D0%B0%D0%BC_%D1%87%D1%83%D0%B4%D0%B5%D1%81%D0%B0%22_%D0%90._%D0%9C%D0%B8%D1%80%D0%B7%D0%BE%D1%8F%D0%BD.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "source": "https://commons.wikimedia.org/?curid=192260226",
+        "credit": "Ка Миро",
+        "license": "CC BY-SA 4.0"
+      }
+    },
     "cards": {
       "https://youtube.com/watch?v=Lt4pX0ZhjsQ": {
         "title": "Вячеслав Короленков о колорите серого пейзажа",
@@ -48,7 +62,7 @@
   },
   "monthly_mix": {"studio": 0.30, "practice": 0.25, "news": 0.20, "people": 0.15, "archive": 0.10},
   "cover_exclusions": ["cleveland"],
-  "image_domains": ["images.metmuseum.org", "openaccess-cdn.clevelandart.org"],
+  "image_domains": ["images.metmuseum.org", "openaccess-cdn.clevelandart.org", "upload.wikimedia.org"],
   "player_domains": ["rutube.ru", "youtube-nocookie.com"],
   "themes": {
     "portrait": {
