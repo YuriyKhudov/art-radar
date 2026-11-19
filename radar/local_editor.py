@@ -118,9 +118,9 @@ class LocalEditor:
             call = urllib.request.Request(self.url + "/v1/chat/completions",
                                           data=json.dumps(request, ensure_ascii=False).encode("utf-8"),
                                           headers={"Content-Type": "application/json"})
-            deadline = time.monotonic() + 165
+            deadline = time.monotonic() + 360
             completion = ""
-            with self.http.open(call, timeout=70) as response:
+            with self.http.open(call, timeout=140) as response:
                 for line in response:
                     if time.monotonic() >= deadline:
                         self.last_error = "deadline"
@@ -144,3 +144,4 @@ class LocalEditor:
             self.last_error = "invalid-stream"
             return None
         return None
+
