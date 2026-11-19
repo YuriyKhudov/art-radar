@@ -1,6 +1,7 @@
 import datetime as dt
 import hashlib
 import io
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -115,34 +116,49 @@ class EditorialTest(unittest.TestCase):
         self.assertEqual(text, baseline)
         self.assertEqual(cover["tiles"][0]["image"], asset)
 
-    def test_visual_cards_use_native_preview_and_real_action(self):
+    def test_classic_fallback_has_all_materials_in_one_message(self):
         picked, _ = editorial.assess(fresh(), CONFIG, NOW)
         issue = editorial.render_visual(picked, CONFIG, None, NOW)
-        issue["cards"][0]["images"] = [{"url": "https://images.metmuseum.org/example.jpg", "license": "CC0"}]
+        issue["cards"][0]["images"] = [{"url": "https://images.metmuseum.org/example.jpg", "license": "CC0", "credit": "Музей"}]
         with patch.object(journal, "visual_photos") as load:
-            packets = journal.visual_packets(visual_issue.make_plan(issue, "native"), "42", None, CONFIG)
+            [(method, data, files)] = journal.visual_packets(visual_issue.make_plan(issue, "classic"), "42", None, CONFIG)
         load.assert_not_called()
-        self.assertEqual(len(packets), 4)
-        for card, (method, data, files) in zip(issue["cards"], packets):
-            self.assertEqual(method, "sendMessage")
-            self.assertFalse(files)
-            self.assertEqual(data["disable_notification"], "true")
-            self.assertIn('"prefer_large_media":true', data["link_preview_options"])
-            self.assertIn('"show_above_text":true', data["link_preview_options"])
-            self.assertIn(card["url"], data["reply_markup"])
-        self.assertIn("Art Radar", packets[0][1]["text"])
-        self.assertNotIn("Art Radar", packets[1][1]["text"])
+        self.assertEqual(method, "sendMessage")
+        self.assertFalse(files)
+        self.assertEqual(data["disable_notification"], "true")
+        self.assertIn("Музей", data["text"])
+        for card in issue["cards"]:
+            self.assertIn(editorial.link(card["title"], card["url"]), data["text"])
 
     def test_single_visual_issue_has_media_and_a_button_per_card(self):
         picked, _ = editorial.assess(fresh(), CONFIG, NOW)
         issue = editorial.render_visual(picked, CONFIG, None, NOW)
         asset = {"url": "https://images.metmuseum.org/example.jpg", "license": "CC0", "credit": "Музей"}
-        with patch.object(journal, "visual_photos", return_value=[(asset, b"jpg")]):
+        images = [[(asset, b"jpg"), (asset, b"jpg2")], [(asset, b"jpg")], [], [(asset, b"jpg")]]
+        with patch.object(journal, "visual_photos", side_effect=images):
             [(method, data, files)] = journal.visual_packets(visual_issue.make_plan(issue, "rich"), "42", None, CONFIG)
         self.assertEqual(method, "sendRichMessage")
         self.assertEqual(len(files), 4)
         self.assertEqual(data["rich_message"].count("<tg-button type="), 4)
         self.assertEqual(data["rich_message"].count('tg://photo?id='), 4)
+        self.assertEqual(data["rich_message"].count("<hr/>"), 3)
+        self.assertEqual(data["rich_message"].count("<tg-slideshow>"), 1)
+        self.assertNotIn("Б ·", data["rich_message"])
+        for card in issue["cards"]:
+            self.assertIn(f'<b>{editorial.link(card["title"], card["url"])}</b>',
+                          json.loads(data["rich_message"])["html"])
+
+    def test_transmission_switches_to_classic_only_for_explicit_unsupported_response(self):
+        rich = ("sendRichMessage", {}, [])
+        classic = ("sendMessage", {}, [])
+        with (patch.object(journal, "send_request", side_effect=[journal.TelegramRejected("404", 404), 42]) as send,
+              redirect_stdout(io.StringIO())):
+            self.assertEqual(journal.transmit_visual(rich, None, "token", classic), 42)
+        self.assertEqual([call.args[0] for call in send.call_args_list], ["sendRichMessage", "sendMessage"])
+        with patch.object(journal, "send_request", side_effect=RuntimeError("timeout")) as send:
+            with self.assertRaisesRegex(RuntimeError, "timeout"):
+                journal.transmit_visual(rich, None, "token", classic)
+            send.assert_called_once()
 
     def test_recency_boundary_and_marketing(self):
         raw = fresh()
@@ -356,6 +372,31 @@ class JournalTest(unittest.TestCase):
             journal.scheduled(state, self.config, fresh(), Mock())
             self.assertEqual(state.clock(), (None, 0, None))
             transport.assert_not_called()
+
+    def test_scheduled_uses_one_rich_message_by_default(self):
+        env = {name: value for name, value in CREDS.items() if name != "ART_RADAR_JOURNAL_FORMAT"}
+        with (self.store() as conn, patch.dict(journal.os.environ, env, clear=True),
+              patch.object(journal, "now_moscow", return_value=NOW),
+              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
+              patch.object(journal, "send_request", return_value=101) as transport, redirect_stdout(io.StringIO())):
+            state = journal.Journal(conn)
+            journal.scheduled(state, self.config, fresh(), Mock())
+            journal.scheduled(state, self.config, fresh(), Mock())
+            transport.assert_called_once()
+            self.assertEqual(transport.call_args.args[0], "sendRichMessage")
+            self.assertEqual(state.clock(), (NOW.isoformat(), 1, None))
+
+    def test_group_preflight_checks_existing_credentials_without_sending(self):
+        env = {"TELEGRAM_BOT_TOKEN": "bot", "TELEGRAM_CHAT_ID": "-123", "TELEGRAM_THREAD_ID": "456"}
+        responses = [{"id": -123, "type": "supergroup", "is_forum": True}, {"id": 10}, {"status": "administrator"}]
+        persisted = Mock()
+        with (patch.dict(journal.os.environ, env, clear=True),
+              patch.object(journal, "telegram_info", side_effect=responses) as api,
+              patch.object(journal, "send_request") as send, redirect_stdout(io.StringIO())):
+            journal.prepare_group(persisted)
+            self.assertEqual([call.args[1] for call in api.call_args_list], ["getChat", "getMe", "getChatMember"])
+            persisted.assert_called_once()
+            send.assert_not_called()
 
     def test_empty_selection_skips_day_and_never_tries_to_catch_up(self):
         with (self.store() as conn, patch.dict(journal.os.environ, CREDS, clear=True),

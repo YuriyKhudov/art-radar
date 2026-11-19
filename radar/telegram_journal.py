@@ -12,7 +12,6 @@ import re
 import sqlite3
 import subprocess
 import sys
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -335,7 +334,10 @@ def save_preview(output, issues, report, day, verified, snapshot=None, replay=No
     if replay is not None:
         (output / "selection.json").write_text(json.dumps(replay, ensure_ascii=False, indent=2), encoding="utf-8")
     if len(issues) == 1 and issues[0].get("visual"):
-        (output / "visual.html").write_text(visual_issue.gallery_preview(issues[0]["visual"]), encoding="utf-8")
+        visual = issues[0]["visual"]
+        (output / "visual.html").write_text(visual_issue.gallery_preview(visual), encoding="utf-8")
+        classic = visual_issue.classic_html(visual["header"], visual["cards"])
+        (output / "classic.html.txt").write_text(classic + "\n", encoding="utf-8")
     selected = [row for issue in issues for row in issue["items"] if row["decision"] == "Выбран в выпуск"]
     diversity = {"directions": dict(Counter(row["direction"] for row in selected)),
                  "publishers": dict(Counter(row["publisher"] for row in selected)),
@@ -579,43 +581,51 @@ def send_request(method, data, token, files=()):
             message = result["result"]
             if data.get("disable_notification") == "true":
                 blocks = (message.get("rich_message") or {}).get("blocks", [])
+                slides = [block for block in blocks if block.get("type") == "slideshow"]
                 photos = sum(block.get("type") == "photo" for block in blocks)
+                photos += sum(block.get("type") == "photo" for slide in slides for block in slide.get("blocks", []))
                 print(f"Telegram · {method} · сообщение {message['message_id']} · "
                       f"фото {photos or int(bool(message.get('photo')))} · "
+                      f"слайд-шоу {len(slides)} · разделители {sum(b.get('type') == 'divider' for b in blocks)} · "
+                      f"кнопки {sum(b.get('type') == 'buttons' for b in blocks)} · "
                       f"настройки превью {bool(message.get('link_preview_options'))}")
             return int(message["message_id"])
     except urllib.error.HTTPError as error:
-        if error.code in {400, 401, 403, 429}:
+        if error.code in {400, 401, 403, 404, 429}:
             try:
                 rejected = json.loads(error.read(32_768))
             except (OSError, ValueError):
                 rejected = {}
             if isinstance(rejected, dict) and rejected.get("ok") is False and rejected.get("error_code") == error.code:
-                raise TelegramRejected(f"Telegram явно отклонил публикацию (HTTP {error.code}).") from None
+                raise TelegramRejected(f"Telegram явно отклонил публикацию (HTTP {error.code}).", error.code) from None
     except (OSError, ValueError, KeyError, TypeError, HTTPException):
         pass
     raise RuntimeError("Telegram не подтвердил отправку. Сначала проверьте тему и разрешите ожидающий выпуск.")
 
 
 def visual_photos(card, domains):
-    from PIL import Image, ImageOps
+    from PIL import Image
 
     photos = []
     for asset in card["images"]:
         original = journal_cover.artwork(asset, domains)
         if original is None:
             continue
-        thumbnail = ImageOps.contain(original, (1800, 1800))
-        canvas = Image.new("RGB", thumbnail.size, "#f6f0e5")
-        canvas.paste(thumbnail, (0, 0), thumbnail)
+        original.thumbnail((1800, 1800))
+        canvas = Image.new("RGB", original.size, "#f6f0e5")
+        canvas.paste(original, (0, 0), original)
         target = io.BytesIO()
         canvas.save(target, "JPEG", quality=91, optimize=True)
         photos.append((asset, target.getvalue()))
     return photos
 
 
+def visual_domains(config):
+    return [*config["image_domains"], *config.get("presentation", {}).get("visual_image_domains", [])]
+
+
 def visual_packets(plan, chat, thread, config, image_cache=None):
-    domains = config["image_domains"]
+    domains = visual_domains(config)
     image_cache = {} if image_cache is None else image_cache
 
     def load(card):
@@ -629,6 +639,14 @@ def visual_packets(plan, chat, thread, config, image_cache=None):
         common["message_thread_id"] = thread
     packets = []
     for entry in plan:
+        if entry["kind"] == "classic":
+            text = visual_issue.classic_html(entry["header"], entry["cards"])
+            if editorial.length(text) > 4096:
+                raise ValueError("Совместимый выпуск превышает лимит Telegram.")
+            links = {"is_disabled": True}
+            packets.append(("sendMessage", {**common, "parse_mode": "HTML", "text": text,
+                                           "link_preview_options": encode(links)}, []))
+            continue
         card = entry.get("card")
         if card and (entry.get("native") or not card["images"] or card["images"][0].get("role") == "portrait"):
             photos = []
@@ -646,16 +664,11 @@ def visual_packets(plan, chat, thread, config, image_cache=None):
                 packets.append(("sendPhoto", data, [("photo", body, "art-radar.jpg")]))
             else:
                 preview = {"url": card["url"], "prefer_large_media": True, "show_above_text": True}
-                title = html.escape(card["title"])
-                linked = editorial.link(card["title"], card["url"])
-                data.update(text=text.replace(f"<b>{title}</b>", f"<b>{linked}</b>", 1),
-                            link_preview_options=encode(preview))
+                data.update(text=text, link_preview_options=encode(preview))
                 packets.append(("sendMessage", data, []))
             continue
         cards = [card] if card else entry["cards"]
         all_photos = [photos] if card else [load(item) for item in cards]
-        if not all(all_photos):
-            raise ValueError("Для единого выпуска требуется разрешённое изображение для каждой карточки.")
         media, files, figures = [], [], []
         for batch in all_photos:
             gallery = []
@@ -670,12 +683,66 @@ def visual_packets(plan, chat, thread, config, image_cache=None):
     return packets
 
 
-def transmit_visual(packet, root, token):
+def transmit_visual(packet, root, token, fallback=None):
     method, data, files = packet
     if root is not None:
         reply = {"message_id": root, "allow_sending_without_reply": True}
         data = {**data, "reply_parameters": encode(reply)}
-    return send_request(method, data, token, files)
+    try:
+        return send_request(method, data, token, files)
+    except TelegramRejected as error:
+        if not fallback or method != "sendRichMessage" or error.code != 404:
+            raise
+        print("Метод Rich Messages недоступен. Отправляется совместимый выпуск.")
+        return transmit_visual(fallback, root, token)
+
+
+def classic_fallback(plan, chat, thread, config):
+    if len(plan) == 1 and plan[0]["kind"] == "rich":
+        return visual_packets([{**plan[0], "kind": "classic"}], chat, thread, config)[0]
+    return None
+
+
+def group_credentials():
+    settings = tuple(os.getenv(name, "").strip() for name in
+                     ("JOURNAL_TELEGRAM_TOKEN", "JOURNAL_TELEGRAM_CHAT", "JOURNAL_TELEGRAM_TOPIC"))
+    if not any(settings):
+        settings = tuple(os.getenv(name, "").strip() for name in
+                         ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_THREAD_ID"))
+    token, chat, thread = settings
+    if not token or not re.fullmatch(r"-[1-9][0-9]*", chat) or not re.fullmatch(r"[1-9][0-9]*", thread):
+        raise ValueError("Для журнала нужны токен, числовой ID рабочей группы и номер темы Telegram.")
+    return settings
+
+
+def telegram_info(token, method, **params):
+    request = urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}",
+                                     data=urllib.parse.urlencode(params).encode())
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            data = json.load(response)
+        if data.get("ok") and isinstance(data.get("result"), dict):
+            return data["result"]
+    except (OSError, ValueError, TypeError, HTTPException):
+        pass
+    raise ValueError(f"Telegram не подтвердил настройки рабочей группы ({method}).")
+
+
+def prepare_group(persist):
+    token, chat, _ = group_credentials()
+    group = telegram_info(token, "getChat", chat_id=chat)
+    if str(group.get("id")) != chat or group.get("type") != "supergroup" or not group.get("is_forum"):
+        raise ValueError("Telegram не подтвердил рабочую супергруппу с темами.")
+    bot = telegram_info(token, "getMe")
+    member = telegram_info(token, "getChatMember", chat_id=chat, user_id=bot["id"])
+    status = member.get("status")
+    permissions = member if status == "restricted" else group.get("permissions", {})
+    if status not in {"administrator", "creator"} and not (
+            (status == "member" or status == "restricted" and member.get("is_member"))
+            and permissions.get("can_send_messages") and permissions.get("can_send_photos")):
+        raise ValueError("Бот не подтвердил права отправки текста и фотографий в рабочей группе.")
+    persist()
+    print("Рабочая супергруппа и права бота подтверждены. Хранилище истории готово. Публикация не запускалась.")
 
 
 def confirmed_test_chat():
@@ -748,26 +815,21 @@ def test_visual_delivery(audit, db, persist, config, variant):
         raise ValueError("Нужен визуальный выпуск из проверенного предпросмотра.")
     issue = issues[0]["visual"]
     token, chat = confirmed_test_chat()
-    modes = ("native", "rich") if variant == "both" else (variant,)
-    labels = {"native": "А · нативные превью", "cards": "Отдельные карточки", "rich": "Б · один визуальный выпуск"}
-    plans = [(mode, visual_issue.make_plan(issue, mode, labels[mode])) for mode in modes]
+    plan = visual_issue.make_plan(issue, variant)
+    packets = visual_packets(plan, chat, None, config)
+    fallback = classic_fallback(plan, chat, None, config)
     db.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(db, timeout=15)) as connection:
         if connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='issues'").fetchone():
             raise ValueError("Для теста требуется отдельная база доставки.")
         outbox = visual_issue.Deliveries(connection)
-        image_cache = {}
-        prepared = [(mode, plan, visual_packets(plan, chat, None, config, image_cache)) for mode, plan in plans]
-        for mode, plan, packets in prepared:
-            identity = json.dumps(plan, sort_keys=True, ensure_ascii=False)
-            key = hmac.new(token.encode(), f"{chat}\n{mode}\n{identity}".encode(), hashlib.sha256).hexdigest()
-            with connection:
-                if outbox.plan(key) is None:
-                    outbox.record(key, plan)
-            receipts = outbox.deliver(key, packets, lambda packet, root: transmit_visual(packet, root, token), persist)
-            print(f"Вариант {mode} · Telegram подтвердил сообщения {', '.join(map(str, receipts))}.")
-            if mode == "native" and variant == "both":
-                time.sleep(1.1)
+        identity = json.dumps(plan, sort_keys=True, ensure_ascii=False)
+        key = hmac.new(token.encode(), f"{chat}\n{variant}\n{identity}".encode(), hashlib.sha256).hexdigest()
+        with connection:
+            if outbox.plan(key) is None:
+                outbox.record(key, plan)
+        receipts = outbox.deliver(key, packets, lambda packet, root: transmit_visual(packet, root, token, fallback), persist)
+        print(f"Личный тест · Telegram подтвердил сообщения {', '.join(map(str, receipts))}.")
 
 
 def check_platforms(config):
@@ -799,10 +861,12 @@ def check_platforms(config):
         print(f"{name} · {status}")
 
 
-def publish_visual(journal, issue, packets, token, persist):
+def publish_visual(journal, issue, plan, packets, credentials, config, persist):
+    token, chat, thread = credentials
+    fallback = classic_fallback(plan, chat, thread, config)
     try:
         receipts = journal.deliveries.deliver(f"issue:{issue}", packets,
-                                             lambda packet, root: transmit_visual(packet, root, token), persist)
+                                             lambda packet, root: transmit_visual(packet, root, token, fallback), persist)
     except visual_issue.UnconfirmedCard as error:
         print(f"Выпуск №{issue}. {error}")
         return
@@ -826,15 +890,14 @@ def scheduled(journal, config, archive, persist):
     interval = config["interval_days"]
     if not pending and not due(now, last, time, interval, journal.setting("attempted_on")):
         return
-    credentials = [os.getenv(name) for name in ("JOURNAL_TELEGRAM_TOKEN", "JOURNAL_TELEGRAM_CHAT", "JOURNAL_TELEGRAM_TOPIC")]
-    if not all(credentials):
-        raise ValueError("Для публикации требуются отдельные настройки токена, группы и темы журнала")
-    token, chat, thread = credentials
+    credentials = group_credentials()
+    _, chat, thread = credentials
     route = hashlib.sha256(f"{chat}\n{thread}".encode()).hexdigest()
     if plan:
         if plan.get("destination") != route:
             raise ValueError("Чат или тема ожидающего выпуска изменились. Сверьте настройки доставки.")
-        publish_visual(journal, pending, visual_packets(plan["entries"], chat, thread, config), token, persist)
+        entries = plan["entries"]
+        publish_visual(journal, pending, entries, visual_packets(entries, chat, thread, config), credentials, config, persist)
         return
     sequence = count + 1
     theme = next_theme(config, sequence)
@@ -842,7 +905,7 @@ def scheduled(journal, config, archive, persist):
     picked, result = prepare(pool, config, history, now, theme, sequence, verify=True)
     if not picked and theme:
         picked, result = prepare(pool, config, history, now, None, sequence, verify=True)
-    variant = os.getenv("ART_RADAR_JOURNAL_FORMAT") or "cards"
+    variant = os.getenv("ART_RADAR_JOURNAL_FORMAT") or visual_issue.DEFAULT_FORMAT
     plan = visual_issue.make_plan(result["visual"], variant) if picked and variant != "legacy" else None
     packets = visual_packets(plan, chat, thread, config) if plan else []
     reserved_plan = {"entries": plan, "destination": route} if plan else None
@@ -850,7 +913,7 @@ def scheduled(journal, config, archive, persist):
     persist()
     if issue:
         if packets:
-            publish_visual(journal, issue, packets, token, persist)
+            publish_visual(journal, issue, plan, packets, credentials, config, persist)
             return
         try:
             message_id = send(result, *credentials)
@@ -883,13 +946,16 @@ def main():
     preview.add_argument("--selection", type=Path, help="Повторить отбор с зафиксированными историей и проверками ссылок")
     preview.add_argument("--offline", action="store_true", help="Локальная проверка оформления без сетевой валидации")
     preview.add_argument("--comparison", action="store_true", help="Один тестовый выпуск с разрешёнными иллюстрациями")
+    preview.add_argument("--exclude-audit", type=Path, help="Исключить материалы уже показанного тестового выпуска")
+    preview.add_argument("--illustrated", action="store_true", help="Проба вёрстки по свежим материалам с разрешёнными изображениями")
     commands.add_parser("scheduled", help="Ежедневный сбор и проверка срока выпуска")
+    commands.add_parser("prepare-group", help="Проверить права бота и подготовить хранилище группы без отправки")
     commands.add_parser("status", help="Последняя отправка и выпуск в ожидании")
     commands.add_parser("check-platforms", help="Проверить ключи публичных API без поиска и публикации")
     test_send = commands.add_parser("test-send", help="Отправить один выпуск в подтверждённый личный Telegram-чат")
     test_send.add_argument("--audit", type=Path, required=True)
     test_send.add_argument("--test-db", type=Path, default=DEFAULT_TEST_DB)
-    test_send.add_argument("--variant", choices=("legacy", "native", "cards", "rich", "both"), default="legacy")
+    test_send.add_argument("--variant", choices=("legacy", "rich", "classic"), default=visual_issue.DEFAULT_FORMAT)
     reconcile = commands.add_parser("reconcile", help="Сверка с Telegram после прерванной отправки")
     reconcile.add_argument("issue", type=int)
     outcome = reconcile.add_mutually_exclusive_group(required=True)
@@ -911,6 +977,10 @@ def main():
         parser.error("--selection требует --snapshot и использует сохранённые сетевые проверки")
     if args.command == "preview" and args.comparison and (not args.snapshot or args.offline or args.examples):
         parser.error("--comparison требует --snapshot и проверенных ссылок")
+    if args.command == "preview" and args.exclude_audit and args.selection:
+        parser.error("--exclude-audit применяется при новом отборе, без --selection")
+    if args.command == "preview" and args.illustrated and (args.selection or args.comparison or args.examples):
+        parser.error("--illustrated применяется при новом отборе одного выпуска")
     if args.command == "preview" and (args.offline and args.refresh or args.snapshot and args.refresh):
         parser.error("--refresh требует сети и не совмещается с --snapshot")
     if args.command == "preview" and args.examples and (args.theme or args.offline and not args.snapshot):
@@ -937,6 +1007,8 @@ def main():
         journal = Journal(connection)
         if args.command == "scheduled":
             scheduled(journal, config, archive, persist)
+        elif args.command == "prepare-group":
+            prepare_group(persist)
         elif args.command == "status":
             last, count, pending = journal.clock()
             print(encode({"last_success": last, "published": count, "pending": pending,
@@ -974,10 +1046,21 @@ def main():
                 live = combine(journal.items(), live)
                 source_report = source_report or json.loads(journal.setting("source_report") or "[]")
             pool = combine(live, [] if args.examples or args.snapshot else archive)
+            if args.illustrated:
+                domains = visual_domains(config)
+                pool = [item for item in live if any(journal_cover.artwork(asset, domains) is not None
+                        for asset in editorial.visual_assets(item, config) if asset.get("role") != "portrait")]
             history = journal.history()
+            if args.exclude_audit:
+                old = sources.read(args.exclude_audit)
+                history.extend(row for issue in old["issues"] for row in issue["items"]
+                               if row["decision"] == "Выбран в выпуск")
             _, count, _ = journal.clock()
             if replay:
                 pool = combine(pool, replay["cards_outside_harvest"])
+                if "illustrated_urls" in replay:
+                    keys = set(replay["illustrated_urls"])
+                    pool = [item for item in pool if sources.canonical(item["url"]) in keys]
                 history, count = replay["history"], replay["count"]
                 selections = [(dt.datetime.fromisoformat(date), theme) for date, theme in replay["schedule"]]
             else:
@@ -994,6 +1077,10 @@ def main():
             inputs = {"schedule": [[date.isoformat(), theme] for date, theme in selections], "count": count,
                       "history": list(history), "theme_explicit": bool(args.theme),
                       "cards_outside_harvest": [item for item in pool if captured_urls.get(sources.canonical(item["url"])) != item]}
+            if args.illustrated:
+                inputs["illustrated_urls"] = [sources.canonical(item["url"]) for item in pool]
+            elif replay and "illustrated_urls" in replay:
+                inputs["illustrated_urls"] = replay["illustrated_urls"]
             verify = not args.offline
             if replay:
                 verify = LinkChecks(replay=replay["checks"], allow_new=args.comparison)

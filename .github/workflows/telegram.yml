@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   post:
+    if: vars.ART_RADAR_JOURNAL_PUBLISH != '1' || vars.ART_RADAR_JOURNAL_SCHEDULED != '1'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

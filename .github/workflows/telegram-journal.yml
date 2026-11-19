@@ -6,7 +6,7 @@ on:
       mode:
         description: Предпросмотр, диагностика API, личный тест или сверка с Telegram
         type: choice
-        options: [preview, check_platforms, private_test, confirmed, absent]
+        options: [preview, check_platforms, private_test, prepare_group, confirmed, absent]
         default: preview
       issue:
         description: Номер выпуска для сверки
@@ -17,13 +17,20 @@ on:
       preview_run_id:
         description: Номер успешного запуска preview для повторного оформления или личной отправки
         type: string
+      exclude_run_id:
+        description: Номер предыдущего предпросмотра, материалы которого нужно исключить из свежего выпуска
+        type: string
       visual:
-        description: Вариант личного теста
+        description: Формат личного теста
         type: choice
-        options: [legacy, native, cards, rich, both]
-        default: legacy
+        options: [rich, classic, legacy]
+        default: rich
       comparison:
         description: Проверочный выпуск с разрешёнными иллюстрациями из сохранённой выгрузки
+        type: boolean
+        default: false
+      illustrated:
+        description: Проверить вёрстку на свежих материалах с подтверждёнными иллюстрациями
         type: boolean
         default: false
   schedule:
@@ -60,6 +67,13 @@ jobs:
           run-id: ${{ inputs.preview_run_id }}
           github-token: ${{ github.token }}
           path: previous-preview
+      - uses: actions/download-artifact@v4
+        if: inputs.preview_run_id == '' && inputs.exclude_run_id != ''
+        with:
+          name: art-radar-journal-preview
+          run-id: ${{ inputs.exclude_run_id }}
+          github-token: ${{ github.token }}
+          path: excluded-preview
       - name: Оформить выпуск из сохранённого отбора
         if: inputs.preview_run_id != '' && !inputs.comparison
         run: >-
@@ -73,9 +87,16 @@ jobs:
       - name: Собрать выпуск для просмотра
         if: inputs.preview_run_id == ''
         env:
+          EXCLUDE_RUN_ID: ${{ inputs.exclude_run_id }}
+          ILLUSTRATED: ${{ inputs.illustrated }}
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
           JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
-        run: python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh
+        run: |
+          set -eu
+          args=()
+          if [[ -n "$EXCLUDE_RUN_ID" ]]; then args+=(--exclude-audit excluded-preview/audit.json); fi
+          if [[ "$ILLUSTRATED" == true ]]; then args+=(--illustrated); fi
+          python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: art-radar-journal-preview
@@ -167,7 +188,8 @@ jobs:
   journal:
     if: >-
       (github.event_name == 'schedule' && vars.ART_RADAR_JOURNAL_SCHEDULED == '1') ||
-      (github.event_name == 'workflow_dispatch' && (inputs.mode == 'confirmed' || inputs.mode == 'absent'))
+      (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch &&
+        (inputs.mode == 'prepare_group' || inputs.mode == 'confirmed' || inputs.mode == 'absent'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -180,18 +202,37 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/checkout@v4
+        if: inputs.mode != 'prepare_group'
         with:
           ref: art-radar-journal-state
           path: journal-state
+      - uses: actions/checkout@v4
+        if: inputs.mode == 'prepare_group'
+        with:
+          path: journal-state
+      - name: Открыть отдельную ветку рабочего журнала
+        if: inputs.mode == 'prepare_group'
+        working-directory: journal-state
+        run: |
+          ref=refs/heads/art-radar-journal-state
+          if git ls-remote --exit-code --heads origin "$ref"; then
+            git fetch --no-tags origin "$ref"
+            git switch -C art-radar-journal-state FETCH_HEAD
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+            git switch --orphan art-radar-journal-state
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Установить средство подготовки обложки
         if: github.event_name == 'schedule'
         run: python -m pip install "Pillow==12.3.0"
-      - name: Сбор и проверка срока выпуска
-        if: github.event_name == 'schedule'
+      - name: Проверить готовность группы или обработать расписание
+        if: github.event_name == 'schedule' || inputs.mode == 'prepare_group'
         env:
+          EVENT: ${{ github.event_name }}
           ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
           ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
           ART_RADAR_JOURNAL_FORMAT: ${{ vars.ART_RADAR_JOURNAL_FORMAT }}
@@ -200,9 +241,15 @@ jobs:
           JOURNAL_TELEGRAM_TOKEN: ${{ secrets.JOURNAL_TELEGRAM_TOKEN }}
           JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
           JOURNAL_TELEGRAM_TOPIC: ${{ secrets.JOURNAL_TELEGRAM_TOPIC }}
-        run: python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state scheduled
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
+        run: |
+          command=scheduled
+          if [[ "$EVENT" == workflow_dispatch ]]; then command=prepare-group; fi
+          python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state "$command"
       - name: Записать результат сверки
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.mode == 'confirmed' || inputs.mode == 'absent'
         env:
           MODE: ${{ inputs.mode }}
           ISSUE: ${{ inputs.issue }}

@@ -488,22 +488,31 @@ def issue_layout(picked, config, theme, url_check, now):
     return header, ordered, cards, date_text
 
 
+def visual_assets(item, config):
+    presentation = config.get("presentation", {})
+    key = sources.canonical(item["url"])
+    custom = presentation.get("cards", {}).get(key, {})
+    baseline = [presentation.get("cover_images", {}).get(key),
+                sources.images({**item, **custom}, config), sources.images(item, config)]
+    approved = presentation.get("visual_images", {}).get(key, [])
+    pictures = {image["url"]: image for image in [*baseline, *approved] if image}
+    role_order = {"artwork": 0, "video_frame": 1, "video_preview": 1, "portrait": 3}
+    if item["kind"] == "video":
+        role_order.update(artwork=1, video_frame=0, video_preview=0)
+    ranked = sorted(pictures.values(), key=lambda image: role_order.get(image.get("role"), 2))
+    art = [image for image in ranked if image.get("role") != "portrait"]
+    return (art or ranked)[:3]
+
+
 def render_visual(picked, config, theme, now):
     header, ordered, cards, _ = issue_layout(picked, config, theme, None, now)
-    presentation = config.get("presentation", {})
-    images = presentation.get("visual_images", {})
-    cover_images = presentation.get("cover_images", {})
     output = []
     for candidate, card in zip(ordered, cards):
-        asset = cover_images.get(candidate.key) or card["image"]
-        pictures = [*([asset] if asset else []), *images.get(candidate.key, [])]
-        if candidate.item.get("image") and not pictures:
-            approved = sources.images(candidate.item, config)
-            pictures = [approved] if approved else []
+        item = candidate.item
         summary = next((value for value in card["summaries"] if value and length(html.escape(value)) <= 200), "")
         output.append({"section": card["heading"], "title": card["title"], "summary": summary,
-                       "byline": card["byline"], "action": card["action"], "url": candidate.item["url"],
-                       "images": pictures[:4]})
+                       "byline": card["byline"], "action": card["action"], "url": item["url"],
+                       "images": visual_assets(item, config)})
     return {"header": "\n".join(header), "cards": output}
 
 
