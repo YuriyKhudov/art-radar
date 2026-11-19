@@ -1188,6 +1188,10 @@ def main():
     if args.command == "reconcile" and args.sent is not None and args.sent <= 0:
         parser.error("--sent требует положительного номера сообщения")
     config = artist_radar.configure(sources.read(sources.ROOT / "sources.json"))
+    if args.command == "preview" and args.automatic_issues:
+        presentation = config.get("presentation", {})
+        config = {**config, "article_edits": {}, "presentation": {**presentation, "cards": {},
+                  "visual_images": {}, "cover_images": {}}}
     if args.command == "check-platforms":
         check_platforms(config)
         return
@@ -1301,17 +1305,9 @@ def main():
                 if args.offline:
                     article_checks = journal_articles.ArticleChecks(config, read=lambda *_: None)
                 else:
-                    article_config = {**config, "article_edits": {}} if args.automatic_issues else config
-                    article_checks = journal_articles.ArticleChecks(article_config, saved=replay.get("articles") if replay else None,
+                    article_checks = journal_articles.ArticleChecks(config, saved=replay.get("articles") if replay else None,
                                                                    allow_new=bool(replay and "visuals" not in replay))
-            visual_config = config
-            if args.automatic_issues:
-                presentation = config.get("presentation", {})
-                automatic_cards = {url: {key: value for key, value in card.items() if key not in {"image", "native_video"}}
-                                   for url, card in presentation.get("cards", {}).items()}
-                visual_config = {**config, "presentation": {**presentation, "cards": automatic_cards,
-                                 "visual_images": {}, "cover_images": {}}}
-            visuals = check_visuals(visual_config, saved=replay.get("visuals") if replay else None, offline=args.offline)
+            visuals = check_visuals(config, saved=replay.get("visuals") if replay else None, offline=args.offline)
             issues = []
             reserve = None
             reserve_report = None
