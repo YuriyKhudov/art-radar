@@ -18,7 +18,7 @@ jobs:
           eligible = []
           for name in ('inclusionai/ling-3.2-flash:free', 'baidu/ernie-5.5-flash-preview:free', 'google/gemma-4-31b-it:free'):
               model = models.get(name)
-              if model and all(float(model['pricing'][field]) == 0 for field in ('prompt', 'completion') and float(model['pricing'].get('request', '0')) == 0):
+              if model and all(float(model["pricing"].get(field, "0" if field == "request" else "nan")) == 0 for field in ("prompt", "completion", "request")):
                   eligible.append(name)
           print('OpenRouter catalog HTTP', status)
           print('Zero-price variants:', ', '.join(eligible))
