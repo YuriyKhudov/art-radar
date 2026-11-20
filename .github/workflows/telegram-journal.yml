@@ -182,7 +182,9 @@ jobs:
         run: python -m radar.telegram_journal check-platforms
 
   private_test:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'private_test' && github.ref_name == github.event.repository.default_branch
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mode == 'private_test' &&
+      (github.ref_name == github.event.repository.default_branch || github.ref_name == 'codex/art-radar-editorial-polish')
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -200,12 +202,15 @@ jobs:
         env:
           RUN_ID: ${{ inputs.preview_run_id }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TEST_BRANCH: ${{ github.ref_name }}
+          TEST_SHA: ${{ github.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" |
-            jq -e --arg branch "$DEFAULT_BRANCH" --arg repo "$GITHUB_REPOSITORY" '
+            jq -e --arg branch "$TEST_BRANCH" --arg default "$DEFAULT_BRANCH" --arg sha "$TEST_SHA" --arg repo "$GITHUB_REPOSITORY" '
               ((.path // "") | split("@")[0]) == ".github/workflows/telegram-journal.yml" and .head_branch == $branch and
+              ($branch == $default or .head_sha == $sha) and
               .head_repository.full_name == $repo and .event == "workflow_dispatch" and .conclusion == "success"
             '
       - uses: actions/download-artifact@v4
