@@ -386,8 +386,8 @@ class EditorialTest(unittest.TestCase):
         self.assertEqual(model.complete.call_count, 2)
         for call in model.complete.call_args_list:
             packet = call.args[1]
-            self.assertEqual(set(packet["facts"]), {1, 2})
-            self.assertEqual(packet["facts"][1][0]["action"], "написал")
+            self.assertEqual(set(packet["facts"]), {"A", "B"})
+            self.assertEqual(packet["facts"]["A"][0]["action"], "написал")
             self.assertNotIn("article", packet)
             self.assertTrue(all(paragraph not in json.dumps(packet, ensure_ascii=False) for paragraph in original))
 
