@@ -540,7 +540,7 @@ def display_card(candidate, config, url_check):
     label = "Читать статью"
     duration = ""
     if item["kind"] == "video":
-        label = video_label(sources.video_platform(item["url"]))
+        label = video_label(sources.video_platform(item.get("video_url") or item["url"]))
         duration = f" · {html.escape(item['duration'])}" if item.get("duration") else ""
     elif info.get("feature") == "works":
         label = "Посмотреть работы"
@@ -568,7 +568,7 @@ def video_label(platform):
 
 def video_actions(item):
     urls = {}
-    for url in [item["url"], *item.get("verified_video_urls", [])]:
+    for url in [item.get("video_url") or item["url"], *item.get("verified_video_urls", [])]:
         if platform := sources.video_platform(url):
             urls.setdefault(platform, url)
     return [{"label": video_label(platform), "url": urls[platform]}
@@ -630,7 +630,7 @@ def render_visual(picked, config, theme, now):
                        "summary": summary, "article": bool(article), "byline": card["byline"],
                        "action": "Читать оригинал" if article else card["action"],
                        "actions": card["actions"],
-                       "url": article["url"] if article else item["url"],
+                       "url": article["url"] if article else item.get("video_url") or item["url"],
                        "images": checked["images"] if checked else visual_assets(item, config),
                        "video_link": bool(checked and checked.get("video_link")),
                        "video": checked["video"] if checked else custom.get("native_video") if item["kind"] == "video" else None})

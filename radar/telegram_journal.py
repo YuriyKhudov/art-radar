@@ -387,10 +387,8 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
 
     def validate(card):
         if card.key not in verified:
-            article = edit_article(card) if article_checks and card.item["kind"] != "video" else {}
-            verified[card.key] = article.get("reason") or (
-                True if article or not url_check else url_check(card.item["url"], card.source["domains"]))
-            if verified[card.key] is True and card.item["kind"] == "video" and url_check:
+            if card.item["kind"] == "video" and url_check:
+                primary = url_check(card.item["url"], card.source["domains"])
                 known = card.item.get("related_urls", [])
                 linked = sources.confirmed_video_refs(card.item, card.source) if not getattr(url_check, "replay", False) else []
                 alternatives = [url for url in dict.fromkeys([*known, *linked]) if sources.video_platform(url)
@@ -398,8 +396,15 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
                 if alternatives:
                     card.item["verified_video_urls"] = alternatives
                     card.item["related_urls"] = alternatives
-                    if any(editorial.duplicates(card, prior) for prior in history):
-                        verified[card.key] = "Уже опубликована подтверждённая версия того же ролика"
+                    if not primary:
+                        card.item["video_url"] = alternatives[0]
+                verified[card.key] = bool(primary or alternatives)
+                if alternatives and any(editorial.duplicates(card, prior) for prior in history):
+                    verified[card.key] = "Уже опубликована подтверждённая версия того же ролика"
+                return verified[card.key]
+            article = edit_article(card) if article_checks and card.item["kind"] != "video" else {}
+            verified[card.key] = article.get("reason") or (
+                True if article or not url_check else url_check(card.item["url"], card.source["domains"]))
         return verified[card.key]
 
     picked, audit = editorial.select(cards, config, theme, validate if verify or article_checks else None, history, now,
