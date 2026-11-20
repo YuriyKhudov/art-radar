@@ -1,279 +1,163 @@
-name: Журнал Art Radar
-
-on:
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: Предпросмотр, диагностика API, личный тест или сверка с Telegram
-        type: choice
-        options: [preview, check_platforms, private_test, prepare_group, confirmed, absent]
-        default: preview
-      issue:
-        description: Номер выпуска для сверки
-        type: string
-      message:
-        description: Номер сообщения в теме Telegram при подтверждении
-        type: string
-      preview_run_id:
-        description: Номер успешного запуска preview для повторного оформления или личной отправки
-        type: string
-      exclude_run_id:
-        description: Номер предыдущего предпросмотра, материалы которого нужно исключить из свежего выпуска
-        type: string
-      visual:
-        description: Формат личного теста
-        type: choice
-        options: [rich, classic, legacy]
-        default: rich
-      comparison:
-        description: Проверочный выпуск с разрешёнными иллюстрациями из сохранённой выгрузки
-        type: boolean
-        default: false
-      illustrated:
-        description: Проверить вёрстку на свежих материалах с подтверждёнными иллюстрациями
-        type: boolean
-        default: false
-      preview_urls:
-        description: Ссылки пробной подборки через пробел. Обычный запуск использует все источники
-        type: string
-      update_test:
-        description: Обновить уже подтверждённый личный Rich Messages из того же предпросмотра
-        type: boolean
-        default: false
-  schedule:
-    - cron: "0,30 * * * *"
-
-permissions:
-  contents: read
-
+name: Art Radar — isolated Cloudflare editor evaluation
+on: workflow_dispatch
+permissions: {}
 jobs:
-  preview:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'preview'
+  editor:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      actions: read
-      contents: read
+    timeout-minutes: 7
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        if: vars.ART_RADAR_JOURNAL_SCHEDULED == '1'
-        with:
-          ref: art-radar-journal-state
-          path: journal-state
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Установить средства подготовки журнала
-        run: python -m pip install "Pillow==12.3.0" "trafilatura==2.3.1" "Protego==0.7.0"
-      - uses: actions/download-artifact@v4
-        if: inputs.preview_run_id != ''
-        with:
-          name: art-radar-journal-preview
-          run-id: ${{ inputs.preview_run_id }}
-          github-token: ${{ github.token }}
-          path: previous-preview
-      - uses: actions/download-artifact@v4
-        if: inputs.preview_run_id == '' && inputs.exclude_run_id != ''
-        with:
-          name: art-radar-journal-preview
-          run-id: ${{ inputs.exclude_run_id }}
-          github-token: ${{ github.token }}
-          path: excluded-preview
-      - name: Оформить выпуск из сохранённого отбора
-        if: inputs.preview_run_id != '' && !inputs.comparison
-        run: >-
-          python -m radar.telegram_journal preview
-          --snapshot previous-preview/harvest.json --selection previous-preview/selection.json
-      - name: Подготовить одинаковый выпуск для двух визуальных вариантов
-        if: inputs.preview_run_id != '' && inputs.comparison
-        run: >-
-          python -m radar.telegram_journal preview --snapshot previous-preview/harvest.json
-          --selection previous-preview/selection.json --comparison
-      - name: Собрать выпуск для просмотра
-        if: inputs.preview_run_id == ''
+      - name: Generate from verified facts and validate editorial JSON
         env:
-          EXCLUDE_RUN_ID: ${{ inputs.exclude_run_id }}
-          ILLUSTRATED: ${{ inputs.illustrated }}
-          PREVIEW_URLS: ${{ inputs.preview_urls }}
-          ART_RADAR_RUN_LOCAL_EDITOR: '1'
-          ART_RADAR_EDITOR_CACHE: ${{ runner.temp }}/art-radar-editor
-          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
-          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
+          ART_RADAR_CLOUDFLARE_API_TOKEN: ${{ secrets.ART_RADAR_CLOUDFLARE_API_TOKEN }}
+          ART_RADAR_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.ART_RADAR_CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          set -eu
-          args=()
-          if [[ -n "$EXCLUDE_RUN_ID" ]]; then args+=(--exclude-audit excluded-preview/audit.json); fi
-          if [[ "$ILLUSTRATED" == true ]]; then args+=(--illustrated); fi
-          read -r -a preview_urls <<< "$PREVIEW_URLS"
-          for url in "${preview_urls[@]}"; do args+=(--only-url "$url"); done
-          python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh "${args[@]}"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: art-radar-journal-preview
-          path: journal-preview/
-
-  check_platforms:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'check_platforms'
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Проверить доступ к публичным метаданным видео
-        env:
-          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
-          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
-        run: python -m radar.telegram_journal check-platforms
-
-  private_test:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'private_test' && github.ref_name == github.event.repository.default_branch
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    permissions:
-      actions: read
-      contents: write
-    concurrency:
-      group: art-radar-journal-test-state
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Проверить происхождение выпуска для теста
-        shell: bash
-        env:
-          RUN_ID: ${{ inputs.preview_run_id }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" |
-            jq -e --arg branch "$DEFAULT_BRANCH" --arg repo "$GITHUB_REPOSITORY" '
-              ((.path // "") | split("@")[0]) == ".github/workflows/telegram-journal.yml" and .head_branch == $branch and
-              .head_repository.full_name == $repo and .event == "workflow_dispatch" and .conclusion == "success"
-            '
-      - uses: actions/download-artifact@v4
-        with:
-          name: art-radar-journal-preview
-          run-id: ${{ inputs.preview_run_id }}
-          github-token: ${{ github.token }}
-          path: approved-preview
-      - uses: actions/checkout@v4
-        with:
-          path: journal-test-state
-      - name: Открыть отдельную ветку тестовых доставок
-        working-directory: journal-test-state
-        run: |
-          ref=refs/heads/art-radar-journal-test-state
-          if git ls-remote --exit-code --heads origin "$ref"; then
-            git fetch --no-tags origin "$ref"
-            git switch -C art-radar-journal-test-state FETCH_HEAD
-          else
-            status=$?
-            if [ "$status" -ne 2 ]; then exit "$status"; fi
-            git switch --orphan art-radar-journal-test-state
-          fi
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Установить средство подготовки визуальных карточек
-        if: inputs.visual != 'legacy'
-        run: python -m pip install "Pillow==12.3.0"
-      - name: Отправить единственный выпуск в подтверждённый личный чат
-        env:
-          VISUAL_VARIANT: ${{ inputs.visual }}
-          UPDATE_TEST: ${{ inputs.update_test }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
-          ART_RADAR_TEST_CHAT_ID: ${{ secrets.ART_RADAR_TEST_CHAT_ID }}
-        run: |
-          args=()
-          if [[ "$UPDATE_TEST" == true ]]; then args+=(--update); fi
-          python -m radar.telegram_journal --git-state test-send \
-            --audit approved-preview/audit.json --test-db journal-test-state/journal-test.sqlite3 \
-            --variant "$VISUAL_VARIANT" "${args[@]}"
-
-  journal:
-    if: >-
-      (github.event_name == 'schedule' && vars.ART_RADAR_JOURNAL_SCHEDULED == '1') ||
-      (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch &&
-        (inputs.mode == 'prepare_group' || inputs.mode == 'confirmed' || inputs.mode == 'absent'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    concurrency:
-      group: art-radar-journal-state
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        if: inputs.mode != 'prepare_group'
-        with:
-          ref: art-radar-journal-state
-          path: journal-state
-      - uses: actions/checkout@v4
-        if: inputs.mode == 'prepare_group'
-        with:
-          path: journal-state
-      - name: Открыть отдельную ветку рабочего журнала
-        if: inputs.mode == 'prepare_group'
-        working-directory: journal-state
-        run: |
-          ref=refs/heads/art-radar-journal-state
-          if git ls-remote --exit-code --heads origin "$ref"; then
-            git fetch --no-tags origin "$ref"
-            git switch -C art-radar-journal-state FETCH_HEAD
-          else
-            status=$?
-            if [ "$status" -ne 2 ]; then exit "$status"; fi
-            git switch --orphan art-radar-journal-state
-          fi
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Установить средства подготовки журнала
-        if: github.event_name == 'schedule'
-        run: python -m pip install "Pillow==12.3.0" "trafilatura==2.3.1" "Protego==0.7.0"
-      - name: Проверить готовность группы или обработать расписание
-        if: github.event_name == 'schedule' || inputs.mode == 'prepare_group'
-        env:
-          EVENT: ${{ github.event_name }}
-          ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
-          ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
-          ART_RADAR_JOURNAL_FORMAT: ${{ vars.ART_RADAR_JOURNAL_FORMAT }}
-          ART_RADAR_RUN_LOCAL_EDITOR: '1'
-          ART_RADAR_EDITOR_CACHE: ${{ runner.temp }}/art-radar-editor
-          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
-          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
-          JOURNAL_TELEGRAM_TOKEN: ${{ secrets.JOURNAL_TELEGRAM_TOKEN }}
-          JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
-          JOURNAL_TELEGRAM_TOPIC: ${{ secrets.JOURNAL_TELEGRAM_TOPIC }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
-        run: |
-          command=scheduled
-          if [[ "$EVENT" == workflow_dispatch ]]; then command=prepare-group; fi
-          python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state "$command"
-      - name: Записать результат сверки
-        if: inputs.mode == 'confirmed' || inputs.mode == 'absent'
-        env:
-          MODE: ${{ inputs.mode }}
-          ISSUE: ${{ inputs.issue }}
-          MESSAGE: ${{ inputs.message }}
-        run: |
-          if [ "$MODE" = confirmed ]; then
-            python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state reconcile "$ISSUE" --sent "$MESSAGE"
-          else
-            python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state reconcile "$ISSUE" --absent
-          fi
+          python3 - <<'PY'
+          import html
+          import json
+          import os
+          import re
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+          
+          ARTICLES = json.loads(r'''[{"title":"Как смотреть Серова","url":"https://arzamas.academy/mag/487-serov","facts":["В портрете 1887 года «Девочка с персиками» Валентину Серову позировала Вера Мамонтова. Ей было двенадцать лет, сеансы проходили ежедневно примерно два месяца.","В «Девочке с персиками» есть лёгкая диагональ композиции и повторение округлых форм в персиках, настенном блюде и спинках стульев.","Свет на скатерти связан с живописной работой над тонами и отражениями. Автор разбора указывает на подмалёвок и лессировки.","Серов написал портрет княгини Зинаиды Юсуповой в 1900–1902 годах. Цвет её платья близок к цвету обивки дивана, на полотне есть белый шпиц.","В портрете Генриетты Гиршман 1907 года зеркало показывает Серова за мольбертом. Для работы над портретом использована темпера.","Портрет Ольги Орловой написан в 1911 году и находится в Русском музее. Размер шляпы стал предметом иронических отзывов."],"anchors":["1887","Мамонтов","Юсупов","Гиршман"]},{"title":"Разбор одного шедевра: «Не ждали» Ильи Репина","url":"https://arzamas.academy/mag/1268-aspettami","facts":["Основная версия «Не ждали» написана Ильёй Репиным в 1884–1888 годах. Она находится в Государственной Третьяковской галерее и связана с революционным циклом художника.","В сцене в комнату входит человек, которого принято считать возвращённым из ссылки революционером. Это распространённая версия сюжета, единственного доказанного ответа о его биографии нет.","На стене висит посмертное изображение Александра II, позволяющее привязать сцену к историческому времени. Версия о возвращении после пересмотра дел — предположение автора разбора.","Репин четыре раза переписывал лицо вошедшего, смысл своих изменений он не объяснил даже близким друзьям.","Девочка, мальчик и женщина у рояля реагируют по-разному. Родство отдельных персонажей и их эмоции остаются предметом интерпретации.","В меньшем варианте, написанном в 1883 году маслом по дереву и частично переписанном в 1898 году, из ссылки возвращается молодая женщина."],"anchors":["Репин","Не ждали","1884","1888","ссыл"]},{"title":"Живопись впечатлений на фоне парижской разрухи","url":"https://www.theartnewspaper.ru/posts/20261113-cfjj/","facts":["Ольга Кабанова 13 ноября 2026 года опубликовала рецензию на книгу австралийского арт-критика Себастьяна Сми о рождении импрессионизма.","Русское издание «Париж в руинах: любовь, война и рождение импрессионизма» вышло в 2026 году в переводе И. Волковой. Это рецензия на книгу, а не на выставку.","В центре книги Эдуард Мане и Берта Моризо. Автор соединяет историю их отношений с рассказом о Франко-прусской войне и осаде Парижа и опирается на документы и свидетельства.","Салон 1870 года предшествовал началу войны. Среди его участников были Мане и Моризо, Эдгар Дега, Огюст Ренуар и Альфред Сислей.","Себастьян Сми приводит рассказ Моризо о том, как Мане самовольно переработал её картину для Салона. Она осталась недовольна результатом.","По наблюдению рецензента, художники этого круга продолжили писать мирные сцены, портреты и пейзажи. Ольга Кабанова считает исторический контекст более удачной частью книги, чем разбор живописи."],"anchors":["Сми","Мане","Моризо","1870"]}]''')
+          model = "@cf/google/gemma-4-26b-a4b-it"
+          token = os.environ["ART_RADAR_CLOUDFLARE_API_TOKEN"].strip()
+          account = os.environ["ART_RADAR_CLOUDFLARE_ACCOUNT_ID"].strip()
+          if not token or not re.fullmatch(r"[a-fA-F0-9]{32}", account):
+              raise SystemExit("Cloudflare credentials missing or Account ID is malformed.")
+          url = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1/chat/completions"
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+          
+          client = urllib.request.build_opener(NoRedirect())
+          schema = {
+              "type": "object",
+              "properties": {
+                  "title": {"type": "string"},
+                  "summary": {"type": "string"},
+                  "fact_ids": {"type": "array", "items": {"type": "integer"}},
+              },
+              "required": ["title", "summary", "fact_ids"],
+              "additionalProperties": False,
+          }
+          system = (
+              "Ты пишешь для русскоязычного художественного журнала. Используй только переданные факты; "
+              "сохраняй различие между установленными сведениями, предположениями и мнением рецензента. "
+              "Напиши самостоятельное изложение на русском языке в объёме 600–1500 знаков, 2–3 коротких абзаца. "
+              "Избегай пересказа заголовка, общих фраз, похвалы и обращения к читателю. "
+              "Вплети необходимые имена, названия и даты в текст естественно. Используй хотя бы четыре факта. "
+              "Верни только JSON с полями title (русский заголовок), summary (текст) и fact_ids (номера фактов из сообщения)."
+          )
+          def provider_request(article, strict):
+              numbered = {i: fact for i, fact in enumerate(article["facts"], 1)}
+              fields = {"тема": article["title"], "источник": article["url"], "факты": numbered,
+                        "обязательные имена или даты в изложении": article["anchors"]}
+              response_format = {"type": "json_schema", "json_schema": {"name": "article_edit", "schema": schema, "strict": True}}
+              if not strict:
+                  response_format = {"type": "json_object"}
+              payload = {"model": model, "messages": [{"role": "system", "content": system},
+                          {"role": "user", "content": json.dumps(fields, ensure_ascii=False)}], "temperature": 0.2,
+                          "chat_template_kwargs": {"enable_thinking": False}, "max_completion_tokens": 1200,
+                          "response_format": response_format}
+              req = urllib.request.Request(url, json.dumps(payload).encode(), headers={
+                  "Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json",
+              })
+              started = time.monotonic()
+              info = {"mode": response_format["type"]}
+              try:
+                  with client.open(req, timeout=45) as response:
+                      info["http"] = response.status
+                      result = json.loads(response.read(500001))
+              except urllib.error.HTTPError as err:
+                  info["http"] = err.code
+                  try:
+                      errors = json.loads(err.read(4000)).get("errors", [])
+                      info["codes"] = [e.get("code") for e in errors if isinstance(e, dict) and isinstance(e.get("code"), int)]
+                  except ValueError:
+                      pass
+                  result = None
+              except (OSError, ValueError):
+                  info["error"] = "transport-or-invalid-envelope"
+                  result = None
+              info["seconds"] = round(time.monotonic() - started, 1)
+              if not isinstance(result, dict):
+                  return info, None
+              if isinstance(result.get("usage"), dict):
+                  info["usage"] = {k: v for k, v in result["usage"].items() if type(v) is int}
+              try:
+                  choice = result["choices"][0]
+                  info["finish_reason"] = choice.get("finish_reason") if choice.get("finish_reason") in ("stop", "length", "content_filter") else "other"
+                  if info["finish_reason"] != "stop":
+                      return info, None
+                  content = choice["message"]["content"]
+                  return info, json.loads(content) if isinstance(content, str) else content
+              except (KeyError, IndexError, TypeError, ValueError):
+                  info["error"] = "invalid-editor-json"
+                  return info, None
+          
+          def validate(article, value):
+              if not isinstance(value, dict) or set(value) != set(schema["required"]):
+                  return ["invalid-json-shape"]
+              title, summary, ids = value["title"], value["summary"], value["fact_ids"]
+              if not isinstance(title, str) or not isinstance(summary, str) or not isinstance(ids, list):
+                  return ["invalid-json-types"]
+              errors = []
+              letters = re.findall(r"[^\W\d_]", summary, re.UNICODE)
+              if not title.strip() or len(title) > 140 or not 600 <= len(summary.strip()) <= 1500:
+                  errors.append("length")
+              if not letters or len(re.findall(r"[А-Яа-яЁё]", summary)) / len(letters) < 0.9:
+                  errors.append("language")
+              if not re.search(r"[.!?…][»”\"]?$", summary.strip()):
+                  errors.append("unfinished-sentence")
+              missing = [name for name in article["anchors"] if name.lower() not in summary.lower()]
+              if missing:
+                  errors.append("missing-anchors:" + ", ".join(missing))
+              if any(type(i) is not int or not 1 <= i <= len(article["facts"]) for i in ids) or len(set(ids)) < 4:
+                  errors.append("fact-ids")
+              return errors
+          
+          rows = []
+          for article in ARTICLES:
+              row = {key: article[key] for key in ("title", "url")}
+              attempts = row["attempts"] = []
+              last_value = None
+              for strict in (True, False):
+                  info, value = provider_request(article, strict)
+                  errors = validate(article, value)
+                  info["validation"] = errors
+                  attempts.append(info)
+                  print("ART_RADAR_ATTEMPT " + json.dumps({"article": article["title"], **info}, ensure_ascii=False), flush=True)
+                  if isinstance(value, dict):
+                      last_value = {k: value[k] for k in ("title", "summary", "fact_ids") if k in value}
+                  if not errors or info.get("http") in (401, 403, 429):
+                      break
+              row["structural_pass"] = not errors
+              row["output"] = last_value
+              rows.append(row)
+              line = json.dumps(row, ensure_ascii=False)
+              print("ART_RADAR_RESULT " + line.replace(token, "***").replace(account, "***"), flush=True)
+              if info.get("http") in (401, 403, 429):
+                  break
+          
+          def safe(value):
+              return html.escape(str(value).replace(token, "***").replace(account, "***"))
+          
+          report = ["# Cloudflare Workers AI — проверка редактуры", "", f"Модель: {model}. В модель переданы только отдельные факты.", ""]
+          for row in rows:
+              report.extend([f"## {safe(row['title'])}", "", f"[Оригинал]({row['url']})", ""])
+              for attempt in row["attempts"]:
+                  text = ", ".join(attempt["validation"]) or "проверки пройдены"
+                  report.append(f"- {attempt['mode']} · {attempt.get('http', '—')} · {attempt['seconds']} с · {safe(text)}")
+              if row["output"]:
+                  title = row["output"].get("title", "")
+                  summary = row["output"].get("summary", "")
+                  report.extend(["", f"**{safe(title)}**", "", safe(summary), "", f"Объём: {len(summary)} знаков."])
+              report.append("")
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(report), encoding="utf-8")
+          if len(rows) != len(ARTICLES) or not all(row["structural_pass"] for row in rows):
+              raise SystemExit("Некоторые проверочные статьи не прошли автоматические проверки.")
+          PY
