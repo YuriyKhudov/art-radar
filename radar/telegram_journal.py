@@ -61,6 +61,7 @@ def collected_inputs(config, now, artist_snapshot=None, previous=()):
             monitored, monitors = pages.result()
         live = combine(combine(live, found), monitored)
         live = [artist_radar.annotate(item, config, catalog[item["source"]]) for item in live]
+        sources.crossposts(live, config)
         status = "ok" if any(q["status"] == "ok" for q in queries) else "Поиск недоступен"
         report.append({"source": "artist-radar", "name": "Artist Radar", "status": status,
                        "count": len(found), "queries": queries})
@@ -389,6 +390,16 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
             article = edit_article(card) if article_checks and card.item["kind"] != "video" else {}
             verified[card.key] = article.get("reason") or (
                 True if article or not url_check else url_check(card.item["url"], card.source["domains"]))
+            if verified[card.key] is True and card.item["kind"] == "video" and url_check:
+                known = card.item.get("related_urls", [])
+                linked = sources.confirmed_video_refs(card.item, card.source) if not getattr(url_check, "replay", False) else []
+                alternatives = [url for url in dict.fromkeys([*known, *linked]) if sources.video_platform(url)
+                                and url_check(url, [urllib.parse.urlsplit(sources.canonical(url)).hostname])]
+                if alternatives:
+                    card.item["verified_video_urls"] = alternatives
+                    card.item["related_urls"] = alternatives
+                    if any(editorial.duplicates(card, prior) for prior in history):
+                        verified[card.key] = "Уже опубликована подтверждённая версия того же ролика"
         return verified[card.key]
 
     picked, audit = editorial.select(cards, config, theme, validate if verify or article_checks else None, history, now,
@@ -403,6 +414,9 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
     if not picked:
         return picked, {"theme": theme, "items": excluded + audit}
     selected_rows = {row["url"]: row for row in audit if row["decision"] == "Выбран в выпуск"}
+    for card in picked:
+        if card.item["kind"] == "video":
+            selected_rows[card.item["url"]]["video_platforms"] = editorial.video_actions(card.item)
     if article_checks:
         for index, card in enumerate(picked):
             if card.item["kind"] != "video":
@@ -448,6 +462,8 @@ def verified_visual_issue(visual):
     if visual.get("policy") != journal_visuals.POLICY or not 2 <= len(cards) <= 4:
         return False
     if not any(card.get("images") or card.get("video") for card in cards):
+        return False
+    if any(a.get("video_link") and b.get("video_link") for a, b in zip(cards, cards[1:])):
         return False
     for card in cards:
         assets = [card["video"]] if card.get("video") else card.get("images", [])
@@ -889,7 +905,8 @@ def visual_packets(plan, chat, thread, config, image_cache=None, prepared_image=
             photos = load(card)
         if card and len(photos) < 2 and not any(asset.get("video") for asset, _ in photos):
             text = "\n\n".join(filter(None, (entry["header"], visual_issue.card_html(card))))
-            markup = {"inline_keyboard": [[{"text": card["action"], "url": card["url"]}]]}
+            markup = {"inline_keyboard": [[{"text": action["label"], "url": action["url"]}
+                                            for action in visual_issue.card_actions(card)]]}
             data = {**common, "parse_mode": "HTML", "reply_markup": encode(markup)}
             if photos:
                 asset, body = photos[0]
@@ -898,7 +915,7 @@ def visual_packets(plan, chat, thread, config, image_cache=None, prepared_image=
                     raise ValueError("Подпись к визуальной карточке превышает лимит Telegram.")
                 packets.append(("sendPhoto", data, [("photo", body, "art-radar.jpg")]))
             else:
-                preview = {"url": card["url"], "prefer_large_media": True, "show_above_text": True}
+                preview = {"url": visual_issue.preview_url(card), "prefer_large_media": True, "show_above_text": True}
                 data.update(text=text, link_preview_options=encode(preview))
                 packets.append(("sendMessage", data, []))
             continue
@@ -936,10 +953,9 @@ def transmit_visual(packet, root, token, fallback=None):
         return transmit_visual(fallback, root, token)
 
 
-def classic_fallback(plan, chat, thread, config):
-    if len(plan) == 1 and plan[0]["kind"] == "rich":
-        return visual_packets([{**plan[0], "kind": "classic"}], chat, thread, config)[0]
-    return None
+def classic_fallbacks(plan, packets, chat, thread, config):
+    return {id(packet): visual_packets([{**entry, "kind": "classic"}], chat, thread, config)[0]
+            for entry, packet in zip(plan, packets) if entry["kind"] == "rich"}
 
 
 def group_credentials():
@@ -1058,9 +1074,10 @@ def test_visual_delivery(audit, db, persist, config, variant, update=False):
     packets = visual_packets(plan, chat, None, config)
     if variant == "rich":
         expected = sum(1 if card.get("video") else len(card["images"]) for card in issue["cards"])
-        if len(packets[0][2]) != expected:
-            raise ValueError(f"В тестовом Rich Messages не хватает вложений: {len(packets[0][2])} из {expected}.")
-    fallback = classic_fallback(plan, chat, None, config)
+        actual = sum(len(packet[2]) for packet in packets)
+        if actual != expected:
+            raise ValueError(f"В тестовом Rich Messages не хватает вложений: {actual} из {expected}.")
+    fallbacks = classic_fallbacks(plan, packets, chat, None, config)
     db.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(db, timeout=15)) as connection:
         if connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='issues'").fetchone():
@@ -1070,7 +1087,7 @@ def test_visual_delivery(audit, db, persist, config, variant, update=False):
         key = hmac.new(token.encode(), f"{chat}\n{variant}\n{identity}".encode(), hashlib.sha256).hexdigest()
         if update:
             receipt = connection.execute("SELECT telegram_id FROM visual_slots WHERE batch=? AND slot=1", (key,)).fetchone()
-            if variant != "rich" or not receipt or not receipt[0] or outbox.plan(key) != plan:
+            if len(plan) != 1 or plan[0]["kind"] != "rich" or not receipt or not receipt[0] or outbox.plan(key) != plan:
                 raise ValueError("Для обновления нужен ранее подтверждённый личный выпуск с тем же планом.")
             _, data, files = packets[0]
             edited = send_request("editMessageText", {"chat_id": chat, "message_id": receipt[0],
@@ -1082,7 +1099,8 @@ def test_visual_delivery(audit, db, persist, config, variant, update=False):
         with connection:
             if outbox.plan(key) is None:
                 outbox.record(key, plan)
-        receipts = outbox.deliver(key, packets, lambda packet, root: transmit_visual(packet, root, token, fallback), persist)
+        receipts = outbox.deliver(key, packets,
+                                  lambda packet, root: transmit_visual(packet, root, token, fallbacks.get(id(packet))), persist)
         print(f"Личный тест · Telegram подтвердил сообщения {', '.join(map(str, receipts))}.")
 
 
@@ -1117,10 +1135,11 @@ def check_platforms(config):
 
 def publish_visual(journal, issue, plan, packets, credentials, config, persist):
     token, chat, thread = credentials
-    fallback = classic_fallback(plan, chat, thread, config)
+    fallbacks = classic_fallbacks(plan, packets, chat, thread, config)
     try:
         receipts = journal.deliveries.deliver(f"issue:{issue}", packets,
-                                             lambda packet, root: transmit_visual(packet, root, token, fallback), persist)
+                                             lambda packet, root: transmit_visual(packet, root, token, fallbacks.get(id(packet))),
+                                             persist)
     except visual_issue.UnconfirmedCard as error:
         print(f"Выпуск №{issue}. {error}")
         return
@@ -1150,7 +1169,7 @@ def scheduled(journal, config, archive, persist):
     if plan:
         if plan.get("destination") != route:
             raise ValueError("Чат или тема ожидающего выпуска изменились. Сверьте настройки доставки.")
-        if config.get("visual_selection") and plan.get("visual_policy") not in {1, journal_visuals.POLICY}:
+        if config.get("visual_selection") and plan.get("visual_policy") not in {1, 2, journal_visuals.POLICY}:
             raise ValueError("Ожидающий выпуск сформирован до проверки иллюстраций. Требуется сверка доставки.")
         entries = plan["entries"]
         packets = visual_packets(entries, chat, thread, config, prepared_image=journal.prepared_image)

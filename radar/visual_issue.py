@@ -5,6 +5,8 @@ import json
 import re
 import time
 
+from radar import editorial_sources as sources
+
 
 class TelegramRejected(RuntimeError):
     """Telegram explicitly declined a request, so no message was created."""
@@ -88,8 +90,21 @@ def make_plan(issue, variant):
     if not 2 <= len(cards) <= 4:
         raise ValueError("В визуальном выпуске требуется от двух до четырёх карточек.")
     header = issue["header"]
-    if variant in {"rich", "classic"}:
+    if variant == "classic":
         return [{"kind": variant, "header": header, "cards": cards}]
+    if variant == "rich":
+        plan, group = [], []
+        for card in cards:
+            if card.get("video_link") and not card["images"] and not card.get("video"):
+                if group:
+                    plan.append({"kind": "rich", "header": header if not plan else "", "cards": group})
+                    group = []
+                plan.append({"kind": "card", "header": header if not plan else "", "card": card, "native": True})
+            else:
+                group.append(card)
+        if group:
+            plan.append({"kind": "rich", "header": header if not plan else "", "cards": group})
+        return plan
     if variant != "cards":
         raise ValueError("Неизвестный визуальный формат.")
     return [{"kind": "card", "header": header if index == 0 else "", "card": card}
@@ -124,6 +139,15 @@ def card_html(card):
     return text
 
 
+def card_actions(card):
+    return card.get("actions") or [{"label": card["action"], "url": card["url"]}]
+
+
+def preview_url(card):
+    return next((action["url"] for action in card_actions(card) if sources.video_platform(action["url"]) == "YouTube"),
+                card["url"])
+
+
 def mosaic_rows(figures):
     """Leave extreme and markedly different proportions in separate full-width blocks."""
     rows = []
@@ -141,7 +165,7 @@ def mosaic_rows(figures):
 
 
 def rich_html(header, cards, photos):
-    parts = [f'<p>{header.replace(chr(10), "<br/>")}</p>']
+    parts = [f'<p>{header.replace(chr(10), "<br/>")}</p>'] if header else []
     credits = []
     for index, (card, figures) in enumerate(zip(cards, photos)):
         if index:
@@ -157,7 +181,9 @@ def rich_html(header, cards, photos):
         if card.get("article"):
             parts.append(f'<p><a href="{url}">{action}</a></p>')
         else:
-            parts.append(f'<tg-button-row align="left"><tg-button type="url" url="{url}">{action}</tg-button></tg-button-row>')
+            buttons = "".join(f'<tg-button type="url" url="{html.escape(link["url"], quote=True)}">'
+                              f'{html.escape(link["label"])}</tg-button>' for link in card_actions(card))
+            parts.append(f'<tg-button-row align="left">{buttons}</tg-button-row>')
         credits.extend(credit_html(asset) for _, asset in figures)
     if credits:
         links = "<br/>".join(dict.fromkeys(credits))
@@ -170,8 +196,8 @@ def classic_html(header, cards):
     for card in cards:
         credits = [*card["images"], *([card["video"]] if card.get("video") else [])]
         images = "\n".join(credit_html(asset) for asset in credits)
-        action = html.escape(card["action"])
-        url = html.escape(card["url"], quote=True)
+        actions = " · ".join(f'<a href="{html.escape(link["url"], quote=True)}">{html.escape(link["label"])}</a>'
+                             for link in card_actions(card))
         if card.get("article"):
             sentences = re.split(r"(?<=[.!?])\s+", card["summary"])
             paragraphs = []
@@ -180,8 +206,8 @@ def classic_html(header, cards):
                     break
                 paragraphs.append(sentence)
             card = {**card, "summary": " ".join(paragraphs)}
-        body.append(f'{card_html(card)}\n<a href="{url}">{action}</a>' + (f"\n<i>{images}</i>" if images else ""))
-    return header + "\n\n" + "\n\n────────\n\n".join(body)
+        body.append(f'{card_html(card)}\n{actions}' + (f"\n<i>{images}</i>" if images else ""))
+    return (header + "\n\n" if header else "") + "\n\n────────\n\n".join(body)
 
 
 def gallery_preview(issue):
@@ -204,10 +230,10 @@ def gallery_preview(issue):
                 primary = " hero" if len(group) in {3, 4} and group[0][1].get("aspect", 1) < .85 else ""
                 groups.append(f'<div class="mosaic count-{len(group)}{primary}">{"".join(figures)}</div>')
         body = "".join(f'<p>{text.replace(chr(10), "<br>")}</p>' for text in card_html(card).split("\n\n"))
-        action = html.escape(card["action"])
-        url = html.escape(card["url"], quote=True)
         style = "source" if card.get("article") else "action"
-        cards.append(f'<article>{"".join(groups)}{body}<a class="{style}" href="{url}">{action}</a></article>')
+        actions = "".join(f'<a class="{style}" href="{html.escape(link["url"], quote=True)}">'
+                          f'{html.escape(link["label"])}</a>' for link in card_actions(card))
+        cards.append(f'<article>{"".join(groups)}{body}<div class="actions">{actions}</div></article>')
     page = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Визуальный Art Radar</title>
 <style>
@@ -219,7 +245,7 @@ img,video{display:block;width:100%;height:auto;margin:auto}a{color:#803628;text-
 .count-2,.count-4,.count-5{grid-template-columns:repeat(2,minmax(0,1fr))}.count-3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .count-5{grid-template-columns:repeat(6,minmax(0,1fr))}.count-5 a{grid-column:span 2}.count-5 a:nth-child(n+4){grid-column:span 3}
 .hero{grid-template-columns:1.65fr 1fr}.hero a:first-child{grid-row:span 2}.count-4.hero a:first-child{grid-row:span 3}
-.action{display:inline-block;padding:5px 12px;border:1px solid currentColor;border-radius:5px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}.action{display:inline-block;padding:5px 12px;border:1px solid currentColor;border-radius:5px}
 i,.source,details{color:#5b5349;font-size:.88em}p{margin:10px 0}summary{cursor:pointer}
 </style></head><body>"""
     references = "<details><summary>Иллюстрации и лицензии</summary><p>" + "<br>".join(credits) + "</p></details>" if credits else ""

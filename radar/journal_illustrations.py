@@ -52,6 +52,13 @@ def same_artist(credit, authors):
                    for stem, name in ARTIST_ALIASES.items()))
 
 
+def headline_work(card, topic):
+    title = card.item.get("original_title") or card.item["title"]
+    works = [a or b for a, b in QUOTED.findall(title)]
+    return works[0] if topic == "art" and len(works) == 1 and re.search(
+        r"картин|полотн|портрет|работ[ауые]|шедевр|продал|аукцион|гравюр", title, re.I) else None
+
+
 def search_terms(card, topic, page, config):
     item = card.item
     title = item.get("original_title") or item["title"]
@@ -173,7 +180,8 @@ def commons_asset(row, topic, authors, works, term, purpose):
         role = "creative_process"
     elif topic == "technique" and matched_topic and re.search(r"finished (?:painting|drawing)|результат урока", caption, re.I):
         role = "technique_result"
-    elif topic in {"artist", "art", "fair", "exhibition", "architecture"} and (matched_work or matched_creator) and (
+    elif topic in {"artist", "art", "fair", "exhibition", "architecture"} and (
+            matched_work or topic == "artist" and matched_creator) and (
             MEDIUM.search(" ".join((caption, category, filename))) or "PD-Art (" in category) and (
             matched_creator or purpose in {"file", "work"}) and not REJECT.search(caption[:120]):
         role = "artwork"
@@ -200,6 +208,7 @@ def chicago_asset(record, authors, works):
     if (record.get("is_public_domain") is not True or not re.fullmatch(r"[0-9a-f-]{36}", image)
             or not isinstance(record.get("id"), int)
             or not same_artist(creator, authors)
+            or works and not any(equivalent(work, name) for name in works)
             or not (record.get("artwork_type_title") in {"Painting", "Drawing and Watercolor", "Print"}
                     or any(equivalent(work, name) for name in works))):
         return None
@@ -213,12 +222,13 @@ def chicago_asset(record, authors, works):
 def search(card, topic, page, config, read_page=journal_articles.public_page, robots=None):
     terms, authors, works = search_terms(card, topic, page, config)
     results, trace, seen = [], [], set()
-    title = card.item.get("original_title") or card.item["title"]
-    named_subject = bool(re.search(r"разбор одного шедевра", title, re.I) and works)
+    named_subject = headline_work(card, topic)
     for href in (page.links if page else []):
         if sources.allowed(href, [COMMONS]) and (marker := re.search(r"/wiki/(File:[^?#]+)", unquote(href))):
             terms.insert(0, (marker[1].replace("_", " "), "file"))
     if named_subject:
+        works = [named_subject]
+        terms = [(file, kind) for file, kind in terms if kind == "file"] + [(named_subject, "work")]
         try:
             aliases, files = wikidata_work(works[0])
             trace.append({"provider": "Wikidata", "query": works[0], "basis": "work", "matched": len(files)})
@@ -231,7 +241,7 @@ def search(card, topic, page, config, read_page=journal_articles.public_page, ro
             records = commons_query(term, file=purpose == "file")
             matches = [asset for row in records if (asset := commons_asset(row, topic, authors, works, term, purpose))]
             if named_subject:
-                matches = [{**asset, "work": works[0]} for asset in matches
+                matches = [{**asset, "work": named_subject} for asset in matches
                            if any(equivalent(asset["work"], work) for work in works)]
             trace.append({"provider": "Wikimedia Commons", "query": term, "basis": purpose,
                           "found": len(records), "matched": len(matches)})
@@ -243,11 +253,12 @@ def search(card, topic, page, config, read_page=journal_articles.public_page, ro
             trace.append({"provider": "Wikimedia Commons", "query": term, "basis": purpose, "status": "unavailable"})
         if len(results) >= 5:
             break
-    if not named_subject and topic in {"art", "artist", "exhibition", "fair"} and len(results) < 5:
-        for term in [name for name, purpose in terms if purpose == "artist" and not sources.CYRILLIC.search(name)][:2]:
+    if topic in {"art", "artist", "exhibition", "fair"} and len(results) < 5:
+        for term in [name for name, purpose in terms if purpose in {"artist", "work"} and not sources.CYRILLIC.search(name)][:2]:
             try:
                 records = chicago_query(term)
-                matches = [asset for row in records if (asset := chicago_asset(row, authors, works))]
+                matches = [asset for row in records if (asset := chicago_asset(row, authors, [] if topic == "artist" else works))
+                           and (works or topic == "artist")]
                 results.extend(matches[:5])
                 trace.append({"provider": "Art Institute of Chicago", "query": term, "basis": "artist",
                               "found": len(records), "matched": len(matches)})

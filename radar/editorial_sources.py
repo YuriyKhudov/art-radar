@@ -36,6 +36,12 @@ CONTACT = re.compile(r"(?:\+7|8)\s*\(?\d{3}\)?[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}"
 ADVERTISING = re.compile(r"промокод|скидк|распродаж|покупайте|купить курс|магазин|оплатить|"
                          r"до конца акции|запись на курс|мест[ао] огранич|приобрести|\bdiscount\b|shop now", re.I)
 VK_LOCK = threading.Lock()
+VIDEO_ROUTES = {
+    "youtube.com": ("YouTube", re.compile(r"/watch\?v=[\w-]{11}", re.ASCII)),
+    "rutube.ru": ("RUTUBE", re.compile(r"/video/[a-f0-9]{32}")),
+    "vkvideo.ru": ("VK Видео", re.compile(r"/video-?\d+_\d+")),
+    "vk.com": ("VK Видео", re.compile(r"/video-?\d+_\d+")),
+}
 
 
 def read(path):
@@ -66,6 +72,16 @@ def allowed(url, domains):
         return host in domains
     except ValueError:
         return False
+
+
+def video_platform(url):
+    try:
+        parts = urllib.parse.urlsplit(canonical(url))
+    except (TypeError, ValueError):
+        return None
+    platform, route = VIDEO_ROUTES.get(parts.netloc, (None, None))
+    address = parts.path + ("?" + parts.query if platform == "YouTube" else "")
+    return platform if route and route.fullmatch(address) else None
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):
@@ -151,10 +167,16 @@ def advertising_dominates(text):
 
 def entry(source, *, url, title, text, date, key, kind, origin, extra=None):
     evidence = description(text)
+    refs = {}
+    if kind == "video" and text:
+        platform = video_platform(url)
+        links = [link.rstrip(".,!?;»") for link in re.findall(r"https://[^\s<>()\"']+", html.unescape(text))]
+        refs = {"video_refs": list(dict.fromkeys(link for link in links
+                  if (other := video_platform(link)) and other != platform))[:4]}
     return {"source": source["id"], "url": url, "feed_id": key, "title": clean(title),
             "evidence": evidence, "access_evidence": clean(CONTACT.sub("", text or ""))[:420],
             "promotion_dominant": advertising_dominates(text),
-            "published": date, "kind": kind, "provenance": origin, **(extra or {})}
+            "published": date, "kind": kind, "provenance": origin, **refs, **(extra or {})}
 
 
 def feed_entries(raw, source):
@@ -184,6 +206,12 @@ def feed_entries(raw, source):
         if title and allowed(link, source["domains"]):
             kind = "video" if video else source.get("kind", "article")
             extra = duration(media.get("duration")) if media is not None else {}
+            if video:
+                expected_channel = urllib.parse.parse_qs(urllib.parse.urlsplit(source.get("feed", "")).query).get("channel_id", [])
+                channel = node.findtext(YT + "channelId")
+                if channel and expected_channel and channel not in expected_channel:
+                    continue
+                extra["video_author"] = node.findtext(f"{ATOM}author/{ATOM}name") or source.get("name", "").split(" · ", 1)[0]
             yield entry(source, url=link, title=title, text=text, date=published, key=key, kind=kind,
                         origin=source.get("feed", "RSS / Atom"), extra=extra)
 
@@ -204,7 +232,8 @@ def rutube_entries(data, source):
                 or not video.get("title") or not video.get("publication_ts") or video.get("is_paid")
                 or video.get("is_club") or video.get("is_adult") or video.get("is_livestream") or video.get("is_hidden")):
             continue
-        extras = {**duration(video.get("duration")), "access": "free"}
+        extras = {**duration(video.get("duration")), "access": "free",
+                  "video_author": author.get("name") or source.get("name", "").split(" · ", 1)[0]}
         if video.get("is_embeddable") is not False and video.get("is_embed_allowed") is not False:
             extras["player"] = f"https://rutube.ru/play/embed/{key}"
         yield entry(source, title=video["title"], url=url, text=video.get("description"),
@@ -265,32 +294,101 @@ def youtube_details(items, token):
 
 
 def crossposts(items, config):
-    """Use an author's fuller description only when both uploads identify the same work."""
-    publishers = {source["id"]: source.get("publisher", source["id"]) for source in config["sources"]}
-    videos = [item for item in items if item["kind"] == "video" and item.get("published")]
-    for item in videos:
-        if not item.get("player") or len(item["evidence"].split()) >= 7:
+    """Find the same upload across the publisher's collected official channels."""
+    catalog = {source["id"]: source for source in config["sources"] if source.get("enabled")}
+    index = {}
+    for item in items:
+        if item["kind"] != "video":
             continue
-        date = dt.datetime.fromisoformat(item["published"])
-        terms = set(re.findall(r"[а-яёa-z\d]{2,}|\d", item["title"].lower()))
-        if len(terms) < 4:
+        item.pop("related_urls", None)
+        source = catalog.get(item["source"], {})
+        owner = video_owner(source)
+        platform = video_platform(item["url"])
+        title = video_words(item.get("original_title") or item["title"])
+        if owner and platform and len(title) >= 2:
+            by_platform = index.setdefault((owner, title), {})
+            by_platform.setdefault(platform, {})[canonical(item["url"])] = item
+    accepted = []
+    for by_platform in index.values():
+        for platform, candidates in by_platform.items():
+            for item in candidates.values():
+                choices = []
+                for other, uploads in by_platform.items():
+                    if other == platform:
+                        continue
+                    matched = [peer for peer in uploads.values() if same_video(item, peer)]
+                    if len(matched) == 1:
+                        choices.append(matched[0])
+                if choices:
+                    urls = [peer["url"] for peer in choices]
+                    evidence = max((peer.get("evidence", "") for peer in choices), key=lambda value: len(value.split()))
+                    accepted.append((item, urls, evidence))
+    for item, urls, evidence in accepted:
+        item["related_urls"] = urls
+        if len(item.get("evidence", "").split()) < 7 <= len(evidence.split()):
+            item["evidence"] = evidence
+
+
+def video_owner(source):
+    if source.get("connector") in {"rutube", "vk"} or source.get("feed") and "youtube.com" in source.get("domains", ()):
+        return source.get("artist_id") or source.get("publisher") or source["id"]
+    return None
+
+
+def video_words(value):
+    return tuple(re.findall(r"[а-яa-z0-9]+", clean(value).casefold().replace("ё", "е")))
+
+
+def same_video(item, peer):
+    a, b = item.get("seconds"), peer.get("seconds")
+    if a and b and abs(a - b) > min(8, max(2, min(a, b) * .015)):
+        return False
+    ea, eb = (set(video_words(row.get("evidence", ""))) for row in (item, peer))
+    if min(len(ea), len(eb)) >= 7 and len(ea & eb) / len(ea | eb) >= .72:
+        return True
+    return bool(a and b and 4 <= min(len(ea), len(eb)) < 7
+                and len(ea & eb) / min(len(ea), len(eb)) >= .8)
+
+
+def confirmed_video_refs(item, author_source):
+    """Resolve only links that the original publisher included with this upload."""
+    if not video_owner(author_source):
+        return []
+    author = video_words(item.get("video_author") or author_source.get("name", "").split(" · ", 1)[0])
+    headline = video_words(item.get("original_title") or item["title"])
+    matched = {}
+    for url in item.get("video_refs", []):
+        platform = video_platform(url)
+        if platform not in {"YouTube", "RUTUBE"}:
             continue
-        for peer in videos:
-            if (item["source"] == peer["source"] or publishers[item["source"]] != publishers[peer["source"]]
-                    or len(peer["evidence"].split()) < 7
-                    or abs(date - dt.datetime.fromisoformat(peer["published"])) > dt.timedelta(days=1)):
-                continue
-            other = set(re.findall(r"[а-яёa-z\d]{2,}|\d", peer["title"].lower()))
-            if terms <= other and {word for word in terms if word.isdecimal()} == {
-                    word for word in other if word.isdecimal()}:
-                item["evidence"] = peer["evidence"]
-                item["related_urls"] = [peer["url"]]
-                item["provenance"] += f" · описание из авторской версии {peer['url']}"
-                break
+        try:
+            if platform == "YouTube":
+                args = urllib.parse.urlencode({"url": canonical(url), "format": "json"})
+                public = get_json(f"https://www.youtube.com/oembed?{args}", "youtube.com")
+                name, title = public.get("author_name"), public.get("title")
+                seconds = None
+            else:
+                video_id = urllib.parse.urlsplit(canonical(url)).path.rsplit("/", 1)[-1]
+                public = get_json(f"https://rutube.ru/api/video/{video_id}/?format=json", "rutube.ru")
+                if any(public.get(key) for key in ("is_paid", "is_club", "is_adult", "is_hidden", "is_livestream")):
+                    continue
+                name, title = (public.get("author") or {}).get("name"), public.get("title")
+                seconds = duration(public.get("duration")).get("seconds")
+                if item.get("seconds") and seconds and not same_video(item, {
+                        "seconds": seconds, "evidence": description(public.get("description")), "published": item.get("published")}):
+                    continue
+            if author and author == video_words(name) and len(headline) >= 2 and video_words(title) == headline:
+                matched.setdefault(platform, {})[canonical(url)] = url
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return [next(iter(links.values())) for links in matched.values() if len(links) == 1]
 
 
 def collect(config):
     """Return live entries and a per-source report, even if some feeds are unavailable."""
+    youtube_owners = {video_owner(source) for source in config["sources"] if source.get("enabled")
+                      and source.get("feed") and "youtube.com" in source.get("domains", ())}
+
     def fetch(source):
         identity = {"source": source["id"], "name": source["name"]}
         connector = source.get("connector", "feed")
@@ -301,8 +399,14 @@ def collect(config):
             try:
                 if connector == "rutube":
                     query = "?format=json" if attempt == 0 else ""
-                    url = f"https://rutube.ru/api/video/person/{source['channel']}/{query}"
-                    items = list(rutube_entries(get_json(url, "rutube.ru"), source))
+                    url = f"https://rutube.ru/api/video/person/{source['channel']}/"
+                    data = get_json(url + query, "rutube.ru")
+                    items = list(rutube_entries(data, source))
+                    if data.get("next") and video_owner(source) in youtube_owners:
+                        try:
+                            items.extend(rutube_entries(get_json(url + "?format=json&page=2", "rutube.ru"), source))
+                        except (OSError, KeyError, TypeError, ValueError):
+                            pass
                 elif connector == "vk":
                     items = list(vk_entries(source, vk_token))
                 else:

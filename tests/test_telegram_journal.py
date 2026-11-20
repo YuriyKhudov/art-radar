@@ -24,13 +24,13 @@ CREDS = {"ART_RADAR_JOURNAL_PUBLISH": "1", "ART_RADAR_JOURNAL_FORMAT": "legacy",
 def fresh(at=NOW):
     fixtures = [
         ("bazanova-rt", "Как писать небо маслом", "В уроке художница объясняет, как смешивает тёплые краски для облаков.",
-         "video", "https://rutube.ru/video/a/", 540),
+         "video", f"https://rutube.ru/video/{'a' * 32}/", 540),
         ("tanr", "В Перми открылась выставка графики", "На выставке собрали рисунки пяти современных художников и отдельную серию офортов.",
          "article", "https://theartnewspaper.ru/posts/a", None),
         ("enterclass-rt", "Пленэр: работа над весенним этюдом", "Художник работает с натуры маслом и записывает весь процесс в своей мастерской.",
-         "video", "https://rutube.ru/video/b/", 880),
+         "video", f"https://rutube.ru/video/{'b' * 32}/", 880),
         ("kulik-rt", "Интервью с художницей о новой серии работ", "В разговоре художница рассказывает о живописи и о работе над новой серией.",
-         "video", "https://rutube.ru/video/c/", 1800),
+         "video", f"https://rutube.ru/video/{'c' * 32}/", 1800),
     ]
     return [{"source": source, "url": url, "title": title, "evidence": evidence, "kind": kind,
              "published": at.isoformat(), "provenance": "Тестовый источник", **sources.duration(seconds)}
@@ -49,7 +49,7 @@ class EditorialTest(unittest.TestCase):
         self.assertIn("<b>Art Radar · 18 ноября 2026</b>", issue["html"])
         self.assertIn(editorial.SLOGAN, issue["html"])
         self.assertIn("<b>Как писать небо маслом</b>", issue["html"])
-        self.assertIn(">Смотреть видео</a> · 9:00", issue["html"])
+        self.assertIn(">Смотреть на RUTUBE</a> · 9:00", issue["html"])
         self.assertIn(">Читать статью</a>", issue["html"])
         self.assertNotIn("Попробуйте", issue["html"])
         self.assertLessEqual(editorial.length(issue["html"]), editorial.PHOTO_CAPTION_LIMIT)
@@ -156,6 +156,43 @@ class EditorialTest(unittest.TestCase):
         figures = [(str(i), {"aspect": ratio}) for i, ratio in enumerate((1.2, .73, 1.4, 1.1, 3.0))]
         rows = visual_issue.mosaic_rows(figures)
         self.assertEqual([[identifier for identifier, _ in row] for row in rows], [["1", "0", "2", "3"], ["4"]])
+
+    def test_verified_platform_buttons_share_a_native_preview_row(self):
+        rutube = fresh()[0]["url"]
+        youtube = "https://www.youtube.com/watch?v=Lt4pX0ZhjsQ"
+        card = {"title": "Как писать небо маслом", "section": "В мастерской", "summary": "", "byline": "",
+                "url": rutube, "action": "Смотреть на RUTUBE", "images": [], "video_link": True,
+                "actions": editorial.video_actions({"url": rutube, "verified_video_urls": [youtube]})}
+        painting = {**card, "video_link": False, "url": "https://example.org/article", "article": True,
+                    "action": "Читать оригинал", "actions": []}
+        plan = visual_issue.make_plan({"header": "Art Radar", "cards": [card, painting]}, "rich")
+        packets = journal.visual_packets(plan, "42", None, {**CONFIG, "visual_selection": False})
+        self.assertEqual([method for method, _, _ in packets], ["sendMessage", "sendRichMessage"])
+        options = json.loads(packets[0][1]["link_preview_options"])
+        self.assertEqual(options, {"url": youtube, "prefer_large_media": True, "show_above_text": True})
+        row, = json.loads(packets[0][1]["reply_markup"])["inline_keyboard"]
+        self.assertEqual([button["text"] for button in row], ["Смотреть на RUTUBE", "Смотреть на YouTube"])
+        self.assertEqual(visual_issue.rich_html("", [card], [[]]).count("<tg-button type="), 2)
+
+    def test_crossposts_require_same_title_owner_duration_and_subject(self):
+        ru = fresh()[0]
+        yt = {**ru, "source": "bazanova-yt", "url": "https://www.youtube.com/watch?v=Lt4pX0ZhjsQ"}
+        other = {**yt, "url": "https://www.youtube.com/watch?v=ntSZ6XWFb1A", "seconds": 840}
+        sources.crossposts([ru, yt, other], CONFIG)
+        self.assertEqual(ru["related_urls"], [yt["url"]])
+        self.assertEqual(yt["related_urls"], [ru["url"]])
+        self.assertNotIn("related_urls", other)
+        different = {**yt, "evidence": "Этот автор отдельно обсуждает новую выставку графики и показывает офорты в галерее."}
+        sources.crossposts([ru, different], CONFIG)
+        self.assertNotIn("related_urls", ru)
+
+    def test_editor_rejects_repeated_price_and_copied_headline(self):
+        self.assertTrue(journal_articles.repeated_fact("Аукцион завершился продажей за $85,8 млн.",
+                                                       "Итоговая цена картины составила $85.8 млн с учётом комиссии."))
+        self.assertFalse(journal_articles.repeated_fact("Аукцион завершился продажей за $85,8 млн.",
+                                                        "Художник написал картину в Веймаре в период работы в Баухаусе."))
+        self.assertIsNone(journal_articles.generated_title({"title": "Работа Кандинского установила рекорд"},
+                                                           "Работа Кандинского установила рекорд", ""))
 
     def test_visual_rules_require_art_that_matches_the_material(self):
         building = {"role": "venue", "credit": "Фасад музея"}

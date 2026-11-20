@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 from radar import artist_pages, editorial, editorial_sources as sources, journal_articles, journal_illustrations
 
 
-POLICY = 2
+POLICY = 3
 ROLES = {
     "architecture": ("architecture", "venue", "artwork", "exhibition_view"),
     "photography": ("art_photograph",),
@@ -44,12 +44,7 @@ OPEN_LICENSES = {"https://creativecommons.org/licenses/by/4.0": "CC BY 4.0",
 
 
 def video_permalink(url):
-    try:
-        url = sources.canonical(url)
-    except ValueError:
-        return False
-    return bool(re.fullmatch(r"https://(?:youtube\.com/watch\?v=[\w-]{11}|rutube\.ru/video/[a-f0-9]{32}|"
-                             r"(?:vkvideo\.ru|vk\.com)/video-?\d+_\d+)(?:[?&].*)?", url, re.ASCII))
+    return bool(sources.video_platform(url))
 
 
 def subject(card, custom):
@@ -73,7 +68,7 @@ def subject(card, custom):
     if EVENT.search(title):
         return "event"
     if (info.get("artist") and info.get("feature") in {"works", "people", "studio"}
-            or re.search(r"творчество|портрет художника|картины художника|artist profile", title, re.I)):
+            or re.search(r"творчество|портрет художника|картины художника|^как смотреть\s|artist profile", title, re.I)):
         return "artist"
     return "art"
 
@@ -181,12 +176,23 @@ class VisualChecks:
                 return {"subject": topic, "images": [], "video": movie, "quality": 3}
 
         catalogue = editorial.visual_assets(card.item, self.config, all_candidates=True)
-        candidates = [asset for asset in catalogue if role_for(asset, topic)]
+        approved = {asset["url"] for asset in settings.get("visual_images", {}).get(card.key, [])}
+        for asset in (custom.get("image"), settings.get("cover_images", {}).get(card.key)):
+            if asset and asset.get("url"):
+                approved.add(asset["url"])
+        main_work = journal_illustrations.headline_work(card, topic)
+        candidates = [asset for asset in catalogue if role_for(asset, topic)
+                      and (asset["url"] in approved or (
+                          asset.get("source") == card.item["url"] and (
+                              not main_work or journal_illustrations.equivalent(
+                                  f"{asset.get('work', '')} {asset.get('caption', '')} {asset['credit']}", main_work))))]
         checked = self.verify_images(candidates, topic)
         search_log = []
         page = None
         permitted = self.config.get("article_domains", [])
         origin = [domain for domain in card.source["domains"] if domain in permitted]
+        if is_video and sources.video_platform(card.item["url"]) == "RUTUBE":
+            origin = ["rutube.ru"]
         # The original source can also supply approved image metadata through JSON-LD.
         roles_found = {asset["role"] for asset in checked.values()}
         enough = len(checked) >= (3 if topic == "artist" else 1)
@@ -202,7 +208,8 @@ class VisualChecks:
                 domains = list(dict.fromkeys([*origin, *self.config["image_domains"], *settings.get("visual_image_domains", [])]))
                 artist = custom.get("feature_artist") or (card.item.get("artist_radar") or {}).get("artist")
                 fresh = [asset for asset in publisher_images(page, card.item["url"], domains)
-                         if role_for(asset, topic) and (topic != "artist" or not artist
+                         if role_for(asset, topic) and (not main_work or journal_illustrations.equivalent(asset["caption"], main_work))
+                         and (topic != "artist" or not artist
                              or artist.casefold() in " ".join([asset["caption"], *asset["creator"]]).casefold())]
                 for digest, asset in self.verify_images(fresh, topic).items():
                     checked.setdefault(digest, asset)

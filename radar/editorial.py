@@ -269,11 +269,23 @@ def duplicates(candidate, item):
     links_a = {candidate.key, *(sources.canonical(url) for url in a.get("related_urls", []))}
     links_b = {sources.canonical(b["url"]), *(sources.canonical(url) for url in b.get("related_urls", []))}
     old_words = words(b.get("original_title", b["title"]))
+    platforms = {sources.video_platform(row["url"]) for row in (a, b)} if a.get("kind") == b.get("kind") == "video" else set()
+    different_platforms = len(platforms) == 2 and None not in platforms
     return (bool(links_a & links_b)
             or bool(a.get("story") and a["story"] == b.get("story"))
             or bool(a.get("feed_id") and a["source"] == b["source"] and a["feed_id"] == b.get("feed_id"))
-            or len(candidate.words) >= 2 and candidate.words == old_words
-            or similar(candidate.words, old_words))
+            or not different_platforms and (len(candidate.words) >= 2 and candidate.words == old_words
+                                            or similar(candidate.words, old_words)))
+
+
+def preview_only(item):
+    media = item.get("journal_visual") or {}
+    return bool(media.get("video_link") and not (media.get("images") or media.get("video")))
+
+
+DIGITAL_FOCUS = re.compile(r"\b(?:gta|gamedev|game\s+design|concept\s+art|3d|игров[а-яё]+\s+индустри[а-яё]+|"
+                           r"компьютерн[а-яё]+\s+игр[а-яё]*|видеоигр[а-яё]*|геймдизайн[а-яё]*|"
+                           r"цифров[а-яё]+\s+дизайн[а-яё]*|дизайн[а-яё]+\s+интерфейс[а-яё]*)\b", re.I)
 
 
 def assess(items, config, now, history=(), provider=None):
@@ -387,6 +399,8 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None, re
                 continue
             if not theme and rubrics[rubric] >= 2:
                 continue
+            if visual and picked and preview_only(picked[-1].item) and preview_only(candidate.item):
+                continue
             archive_floor = config["extra_score"] if reserve and candidate.item.get("archive_index") else config["archive_score"]
             if not theme and rubric == "archive" and (rubrics["archive"] or candidate.score < archive_floor
                                                        or (position < config["min_items"] - 1 and not reserve)):
@@ -426,13 +440,17 @@ def select(candidates, config, theme=None, verify=None, history=(), now=None, re
             rating = (card.score + visual + balance + boost + freshness - 8 * rubrics[card.direction]
                       - min(24, 7 * month_providers[card.publisher])
                       + (3 if card.russian == russian_needed else 0) + artist_boost + style_boost + stream_balance)
-            return completes_visual_issue, featured, rating
+            digital = bool(DIGITAL_FOCUS.search(f"{card.item['title']} {card.item.get('evidence', '')}"))
+            return completes_visual_issue, not digital, featured, rating
 
         eligible.sort(key=priority, reverse=True)
         for candidate in eligible:
             outcome = verify(candidate) if verify else True
             if isinstance(outcome, str) or not outcome:
                 rejected[candidate.key] = outcome or "Прямая ссылка не прошла сетевую проверку"
+                continue
+            if any(duplicates(candidate, prior.item) for prior in picked):
+                rejected[candidate.key] = "Другой материал о том же сюжете выбран в выпуск"
                 continue
             picked.append(candidate)
             rubrics[candidate.direction] += 1
@@ -505,7 +523,7 @@ def display_card(candidate, config, url_check):
     custom = layout.get("cards", {}).get(candidate.key, {})
     artist = info.get("artist", "")
     russian = layout.get("names", {}).get(artist)
-    title = custom.get("title", item["title"])
+    title = custom.get("title") or (item.get("journal_article") or {}).get("title") or item["title"]
     if russian:
         title = (title.replace(artist, russian) if not custom.get("title") else title)
     credit = custom.get("credit") or candidate.source["name"].split(" · ", 1)[0]
@@ -522,7 +540,7 @@ def display_card(candidate, config, url_check):
     label = "Читать статью"
     duration = ""
     if item["kind"] == "video":
-        label = "Смотреть видео"
+        label = video_label(sources.video_platform(item["url"]))
         duration = f" · {html.escape(item['duration'])}" if item.get("duration") else ""
     elif info.get("feature") == "works":
         label = "Посмотреть работы"
@@ -530,14 +548,31 @@ def display_card(candidate, config, url_check):
     if image and (candidate.publisher in config.get("cover_exclusions", []) or
                   url_check and not url_check(image["url"], config["image_domains"], image=True)):
         image = None
-    footer = f"{link(label, item['url'])}{duration}"
+    actions = video_actions(item) if item["kind"] == "video" else []
+    footer = (" · ".join(link(action["label"], action["url"]) for action in actions)
+              if actions else link(label, item["url"])) + duration
     if source_line:
         footer += " · " + source_line
     byline = " · ".join(filter(None, (item.get("duration") if item["kind"] == "video" else None,
                                       credit if credit.casefold() not in title.casefold() else None,
                                       artist if russian else None)))
-    return {"heading": heading, "title": title, "footer": footer, "action": label, "byline": byline,
+    return {"heading": heading, "title": title, "footer": footer, "action": label, "actions": actions, "byline": byline,
             "summaries": summary_options(item, custom), "image": image}
+
+
+def video_label(platform):
+    if platform == "VK Видео":
+        return "Смотреть в VK Видео"
+    return f"Смотреть на {platform}" if platform else "Открыть оригинал"
+
+
+def video_actions(item):
+    urls = {}
+    for url in [item["url"], *item.get("verified_video_urls", [])]:
+        if platform := sources.video_platform(url):
+            urls.setdefault(platform, url)
+    return [{"label": video_label(platform), "url": urls[platform]}
+            for platform in ("RUTUBE", "YouTube", "VK Видео") if platform in urls]
 
 
 def issue_layout(picked, config, theme, url_check, now):
@@ -551,8 +586,9 @@ def issue_layout(picked, config, theme, url_check, now):
     lead = next((card for card in picked if card.stream == "priority" and card.fresh and
                  card.age <= config["news_days"] and card.score >= config["extra_score"]), None)
     if lead:
-        ordered.remove(lead)
-        ordered.insert(0, lead)
+        proposed = [lead, *(card for card in ordered if card != lead)]
+        if not any(preview_only(a.item) and preview_only(b.item) for a, b in zip(proposed, proposed[1:])):
+            ordered = proposed
     cards = [display_card(candidate, config, url_check) for candidate in ordered]
     return header, ordered, cards, date_text
 
@@ -593,6 +629,7 @@ def render_visual(picked, config, theme, now):
         output.append({"section": section, "artist": feature if article else None, "title": card["title"],
                        "summary": summary, "article": bool(article), "byline": card["byline"],
                        "action": "Читать оригинал" if article else card["action"],
+                       "actions": card["actions"],
                        "url": article["url"] if article else item["url"],
                        "images": checked["images"] if checked else visual_assets(item, config),
                        "video_link": bool(checked and checked.get("video_link")),
