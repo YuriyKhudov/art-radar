@@ -286,36 +286,38 @@ class EditorialTest(unittest.TestCase):
         self.assertTrue(journal_articles.prose_ngrams(source, set()) & journal_articles.prose_ngrams(draft, set()))
         self.assertFalse(journal_articles.prose_ngrams(source, confirmed) & journal_articles.prose_ngrams(draft, confirmed))
 
-    def test_groq_requests_only_the_selected_model_with_strict_json(self):
+    def test_cloudflare_requests_only_the_selected_model_with_strict_json(self):
         body = io.BytesIO(json.dumps({"choices": [{"finish_reason": "stop", "message": {
             "content": '{"supported": true, "problems": []}'}}]}).encode())
         body.headers = {}
-        editor = local_editor.GroqEditor("test-key")
+        editor = local_editor.CloudflareEditor("test-key", "a" * 32)
         editor.http.open = Mock(return_value=body)
         schema = journal_articles.CHECK_SCHEMA
         self.assertEqual(editor.complete("Проверь", {"summary": "Текст"}, 220, schema),
                          {"supported": True, "problems": []})
         request = editor.http.open.call_args.args[0]
         data = json.loads(request.data)
-        self.assertEqual(data["model"], "openai/gpt-oss-120b")
-        self.assertEqual(request.full_url, "https://api.groq.com/openai/v1/chat/completions")
+        self.assertEqual(data["model"], "@cf/google/gemma-4-26b-a4b-it")
+        self.assertEqual(request.full_url, f"https://api.cloudflare.com/client/v4/accounts/{'a' * 32}/ai/v1/chat/completions")
+        self.assertFalse(data["chat_template_kwargs"]["enable_thinking"])
         self.assertTrue(data["response_format"]["json_schema"]["strict"])
 
-    def test_groq_stops_new_requests_after_quota_error(self):
-        editor = local_editor.GroqEditor("test-key")
-        editor.http.open = Mock(side_effect=urllib.error.HTTPError("https://api.groq.com", 429, "test", {}, None))
+    def test_cloudflare_stops_new_requests_after_quota_error(self):
+        editor = local_editor.CloudflareEditor("test-key", "a" * 32)
+        editor.http.open = Mock(side_effect=urllib.error.HTTPError("https://api.cloudflare.com", 429, "test", {},
+                                                                  io.BytesIO(b'{"errors":[{"code":3036}]}')))
         for _ in range(2):
             self.assertIsNone(editor.complete("Проверь", {}, 220, journal_articles.CHECK_SCHEMA))
         self.assertEqual(editor.stop_reason, "quota-exhausted")
         editor.http.open.assert_called_once()
 
-    def test_ready_article_is_reused_when_groq_quota_is_exhausted(self):
+    def test_ready_article_is_reused_when_cloudflare_quota_is_exhausted(self):
         pool = fresh()
         candidates, _ = editorial.assess(pool, CONFIG, NOW)
         article = next(card for card in candidates if card.item["kind"] == "article")
         prepared = {"summary": "Проверенный текст из резерва.", "url": article.item["url"],
-                    "verification": local_editor.GROQ_MODEL}
-        model = local_editor.GroqEditor("test-key")
+                    "verification": local_editor.CLOUDFLARE_MODEL}
+        model = local_editor.CloudflareEditor("test-key", "a" * 32)
         model.stop_reason = "quota-exhausted"
         model.http.open = Mock()
         reader = Mock()
@@ -328,6 +330,29 @@ class EditorialTest(unittest.TestCase):
         self.assertTrue(any(card.get("summary") == prepared["summary"] for card in result["visual"]["cards"]))
         reader.assert_not_called()
         model.http.open.assert_not_called()
+
+    def test_article_retries_only_twice_and_sends_facts_instead_of_source_paragraphs(self):
+        from types import SimpleNamespace
+
+        original = [
+            "Валентин Серов написал портрет Веры Мамонтовой в Абрамцеве в 1887 году. Девочка позировала художнику несколько недель.",
+            "Третьяковская галерея показала портрет в зале русской живописи. Музей представил картины автора рядом с его графикой.",
+        ]
+        url = "https://example.org/article"
+        article = SimpleNamespace(key=url, item={"url": url, "title": "Картины Валентина Серова"},
+                                  source={"lang": "ru", "domains": ["example.org"]})
+        model = Mock()
+        model.complete.return_value = None
+        editor = journal_articles.ArticleChecks({"article_domains": ["example.org"]}, model=model, read=lambda *_: original)
+        result = editor.check(article)
+        self.assertIn("reason", result)
+        self.assertEqual(model.complete.call_count, 2)
+        for call in model.complete.call_args_list:
+            packet = call.args[1]
+            self.assertEqual(set(packet["facts"]), {1, 2})
+            self.assertEqual(packet["facts"][1][0]["action"], "написал")
+            self.assertNotIn("article", packet)
+            self.assertTrue(all(paragraph not in json.dumps(packet, ensure_ascii=False) for paragraph in original))
 
     def test_transmission_switches_to_classic_only_for_explicit_unsupported_response(self):
         rich = ("sendRichMessage", {}, [])

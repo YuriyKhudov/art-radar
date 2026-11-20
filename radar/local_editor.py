@@ -28,64 +28,78 @@ BUILDS = {
     "linux": ("ubuntu-x64", "b4408b30b6e87ad951629f674dc69fbc199a7ab4b6ccbd54eb8b4c5b4fd7da81"),
 }
 
-GROQ_MODEL = "openai/gpt-oss-120b"
-GROQ_KEY_ENV = "ART_RADAR_GROQ_API_KEY"
+CLOUDFLARE_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+CLOUDFLARE_KEY_ENV = "ART_RADAR_CLOUDFLARE_API_TOKEN"
+CLOUDFLARE_ACCOUNT_ENV = "ART_RADAR_CLOUDFLARE_ACCOUNT_ID"
+# The account's Workers Free limit is 10,000 Neurons/day. Leave room for
+# other runs and other account usage even when request accounting is unavailable.
+CLOUDFLARE_RUN_NEURONS = 1000
 
 
-class GroqEditor:
-    """Use the same completion interface with a single Groq Free project."""
+class CloudflareEditor:
+    """Use the editor completion interface with one Workers Free model."""
 
-    def __init__(self, key=None):
-        self._key = (os.getenv(GROQ_KEY_ENV, "") if key is None else key).strip()
-        self.http = urllib.request.build_opener(Redirects(["api.groq.com"]))
-        self.stop_reason = None if self._key else "key-missing"
+    def __init__(self, key=None, account=None):
+        self._key = (os.getenv(CLOUDFLARE_KEY_ENV, "") if key is None else key).strip()
+        self._account = (os.getenv(CLOUDFLARE_ACCOUNT_ENV, "") if account is None else account).strip()
+        self.http = urllib.request.build_opener(Redirects([]))
+        self.stop_reason = None if self._key and re.fullmatch(r"[a-fA-F0-9]{32}", self._account) else "credentials-missing"
         self.last_error = self.stop_reason
         self.calls = 0
-        self.remaining_tokens = None
-        self.reset_tokens_at = 0.0
+        self.neurons = 0.0
+
+    @staticmethod
+    def charge(input_tokens, output_tokens):
+        return (input_tokens * 9091 + output_tokens * 27273) / 1_000_000
 
     def complete(self, system, payload, max_tokens, schema):
         self.last_error = self.stop_reason
         if self.stop_reason:
             return None
-        content = json.dumps(payload, ensure_ascii=False)
-        completion_limit = max_tokens + 550
-        # Estimate conservatively and use the provider's current remaining-token header between calls.
-        estimate = (len(system.encode()) + len(content.encode())) // 2 + completion_limit
-        if self.remaining_tokens is not None and estimate > self.remaining_tokens:
-            remaining = self.reset_tokens_at - time.monotonic()
-            if 0 < remaining <= 60:
-                time.sleep(remaining + .1)
-        body = {"model": GROQ_MODEL, "messages": [{"role": "system", "content": system},
-                    {"role": "user", "content": content}], "reasoning_effort": "low", "reasoning_format": "hidden",
-                "max_completion_tokens": completion_limit,
+        body = {"model": CLOUDFLARE_MODEL, "messages": [{"role": "system", "content": system},
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+                "chat_template_kwargs": {"enable_thinking": False}, "temperature": 0.2,
+                "max_completion_tokens": max_tokens,
                 "response_format": {"type": "json_schema", "json_schema": {"name": "article_edit", "strict": True,
                                                                            "schema": schema}}}
-        request = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions", data=json.dumps(body).encode(),
-                                         headers={"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"})
+        data = json.dumps(body, ensure_ascii=False).encode()
+        estimate = self.charge(len(data) + 64, max_tokens)
+        if self.neurons + estimate > CLOUDFLARE_RUN_NEURONS:
+            self.stop_reason = self.last_error = "run-budget"
+            return None
+        self.neurons += estimate
+        url = f"https://api.cloudflare.com/client/v4/accounts/{self._account}/ai/v1/chat/completions"
+        request = urllib.request.Request(url, data=data,
+                                         headers={"Authorization": f"Bearer {self._key}", "Content-Type": "application/json",
+                                                  "Accept": "application/json"})
         self.calls += 1
         try:
-            with self.http.open(request, timeout=60) as response:
-                tokens = response.headers.get("x-ratelimit-remaining-tokens", "")
-                reset = response.headers.get("x-ratelimit-reset-tokens", "")
-                match = re.fullmatch(r"(?:(\d+)m)?(\d+(?:\.\d+)?)s", reset)
-                if tokens.isdecimal() and match:
-                    self.remaining_tokens = int(tokens)
-                    self.reset_tokens_at = time.monotonic() + 60 * int(match[1] or 0) + float(match[2])
+            with self.http.open(request, timeout=45) as response:
                 value = json.loads(response.read(500_001))
+            usage = value.get("usage", {})
+            counts = [usage.get(key) for key in ("prompt_tokens", "completion_tokens")] if isinstance(usage, dict) else []
+            if len(counts) == 2 and all(type(count) is int and count >= 0 for count in counts):
+                self.neurons += self.charge(*counts) - estimate
             choice = value["choices"][0]
             if choice.get("finish_reason") != "stop":
                 self.last_error = "incomplete-response"
                 return None
-            result = json.loads(choice["message"]["content"])
+            content = choice["message"]["content"]
+            result = json.loads(content) if isinstance(content, str) else content
             if isinstance(result, dict):
                 return result
         except urllib.error.HTTPError as error:
-            self.last_error = "quota-exhausted" if error.code == 429 else f"http-{error.code}"
-            if error.code in {400, 401, 403, 404, 429}:
+            self.last_error = f"http-{error.code}"
+            if error.code == 429:
+                try:
+                    codes = {item["code"] for item in json.loads(error.read(8_192)).get("errors", [])}
+                except (AttributeError, KeyError, TypeError, ValueError):
+                    codes = set()
+                self.last_error = "capacity" if 3040 in codes and 3036 not in codes else "quota-exhausted"
+            if error.code in {401, 403, 404, 410} or self.last_error == "quota-exhausted":
                 self.stop_reason = self.last_error
             return None
-        except (OSError, ValueError, KeyError, TypeError, IndexError):
+        except (AttributeError, OSError, ValueError, KeyError, TypeError, IndexError):
             pass
         self.last_error = "invalid-response"
         return None
