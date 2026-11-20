@@ -524,9 +524,10 @@ def display_card(candidate, config, url_check):
     custom = layout.get("cards", {}).get(candidate.key, {})
     artist = info.get("artist", "")
     russian = layout.get("names", {}).get(artist)
-    title = custom.get("title") or (item.get("journal_article") or {}).get("title") or item["title"]
+    edited = item.get("journal_video") or item.get("journal_article") or {}
+    title = edited.get("title") or custom.get("title") or item["title"]
     if russian:
-        title = (title.replace(artist, russian) if not custom.get("title") else title)
+        title = title.replace(artist, russian) if edited.get("title") or not custom.get("title") else title
     credit = custom.get("credit") or candidate.source["name"].split(" · ", 1)[0]
     source_line = f"<i>{html.escape(credit)}</i>" if credit.casefold() not in title.casefold() else ""
     if russian:
@@ -557,8 +558,9 @@ def display_card(candidate, config, url_check):
     byline = " · ".join(filter(None, (item.get("duration") if item["kind"] == "video" else None,
                                       credit if credit.casefold() not in title.casefold() else None,
                                       artist if russian else None)))
+    summaries = [edited["summary"]] if item.get("journal_video") else summary_options(item, custom)
     return {"heading": heading, "title": title, "footer": footer, "action": label, "actions": actions, "byline": byline,
-            "summaries": summary_options(item, custom), "image": image}
+            "summaries": summaries, "image": image}
 
 
 def video_label(platform):

@@ -174,6 +174,29 @@ class EditorialTest(unittest.TestCase):
         self.assertEqual([button["text"] for button in row], ["Смотреть на RUTUBE", "Смотреть на YouTube"])
         self.assertEqual(visual_issue.rich_html("", [card], [[]]).count("<tg-button type="), 2)
 
+    def test_selected_video_uses_gemma_title_and_annotation(self):
+        raw = {**fresh()[0], "title": "КАК ПИСАТЬ НЕБО МАСЛОМ....... ссылка внизу"}
+        model = Mock()
+        model.complete.return_value = {"title": "Облака в масляной живописи",
+                                       "summary": "В ролике художница объясняет, как смешивает краски для облаков."}
+        checks = journal_articles.ArticleChecks(CONFIG, model=model)
+        picked, issue = journal.prepare([raw, *fresh()[2:]], CONFIG, [], NOW, None, 1, verify=False,
+                                        article_checks=checks)
+        self.assertEqual(len(picked), 3)
+        card = next(card for card in issue["visual"]["cards"] if card["url"] == raw["url"])
+        self.assertEqual(card["title"], "Облака в масляной живописи")
+        self.assertIn("смешивает краски для облаков", card["summary"])
+        self.assertEqual(card["actions"][0]["label"], "Смотреть на RUTUBE")
+        payload = model.complete.call_args_list[0].args[1]
+        self.assertIn("Как писать небо маслом", payload["title"])
+        self.assertNotIn("ссылка внизу", payload["title"])
+
+    def test_subsequent_messages_do_not_quote_issue_header(self):
+        packet = ("sendMessage", {"chat_id": "42", "disable_notification": "true"}, [])
+        with patch.object(journal, "send_request", return_value=43) as send:
+            self.assertEqual(journal.transmit_visual(packet, 42, "token"), 43)
+        self.assertNotIn("reply_parameters", send.call_args.args[1])
+
     def test_crossposts_require_same_title_owner_duration_and_subject(self):
         ru = fresh()[0]
         yt = {**ru, "source": "bazanova-yt", "url": "https://www.youtube.com/watch?v=Lt4pX0ZhjsQ"}
@@ -223,6 +246,7 @@ class EditorialTest(unittest.TestCase):
         visuals = Mock()
         visuals.check.side_effect = lambda card: refused if card.key == sources.canonical(rejected["url"]) else valid
         article_editor = Mock()
+        article_editor.check_video.side_effect = lambda card: {"title": card.item["title"], "summary": ""}
         picked, issue = journal.prepare(raw, CONFIG, [], NOW, None, 1, verify=False,
                                         article_checks=article_editor, visual_checks=visuals)
         article_editor.check.assert_not_called()

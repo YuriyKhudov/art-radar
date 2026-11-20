@@ -333,6 +333,8 @@ def preparation_key(stage, card, config):
     if stage == "article":
         settings = [journal_articles.EDITORIAL_VERSION, config.get("russian_editions", {}).get(card.key),
                     config.get("article_edits", {}).get(card.key)]
+    elif stage == "video":
+        settings = [journal_articles.EDITORIAL_VERSION]
     else:
         presentation = config.get("presentation", {})
         settings = [journal_visuals.POLICY, config.get("extended_illustrations"), config.get("video_link_fallback"),
@@ -374,16 +376,17 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
     url_check = check if verify is True else verify or None
     verified = {}
 
-    def edit_article(card):
+    def edit_copy(card, stage="article"):
+        review = article_checks.check_video if stage == "video" else article_checks.check
         if journal and card.key not in article_checks.results:
-            if saved := journal.prepared("article", card, config):
+            if saved := journal.prepared(stage, card, config):
                 article_checks.results[card.key] = saved
                 return saved
-            result = article_checks.check(card)
-            if result.get("summary"):
-                journal.remember("article", card, config, result)
+            result = review(card)
+            if result.get("summary") or stage == "video" and result.get("verification") == journal_articles.CLOUDFLARE_MODEL:
+                journal.remember(stage, card, config, result)
             return result
-        return article_checks.check(card)
+        return review(card)
 
     def validate(card):
         if card.key not in verified:
@@ -403,7 +406,7 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
                 if alternatives and any(editorial.duplicates(card, prior) for prior in history):
                     verified[card.key] = "Уже опубликована подтверждённая версия того же ролика"
                 return verified[card.key]
-            article = edit_article(card) if article_checks and card.item["kind"] != "video" else {}
+            article = edit_copy(card) if article_checks and card.item["kind"] != "video" else {}
             verified[card.key] = article.get("reason") or (
                 True if article or not url_check else url_check(card.item["url"], card.source["domains"]))
         return verified[card.key]
@@ -425,11 +428,11 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
             selected_rows[card.item["url"]]["video_platforms"] = editorial.video_actions(card.item)
     if article_checks:
         for index, card in enumerate(picked):
-            if card.item["kind"] != "video":
-                metadata = edit_article(card)
-                picked[index] = replace(card, item={**card.item, "journal_article": metadata})
-                row = selected_rows[card.item["url"]]
-                row["article_edit"] = {key: value for key, value in metadata.items() if key != "summary"}
+            stage = "video" if card.item["kind"] == "video" else "article"
+            metadata = edit_copy(card, stage)
+            picked[index] = replace(card, item={**card.item, f"journal_{stage}": metadata})
+            row = selected_rows[card.item["url"]]
+            row[f"{stage}_edit"] = {key: value for key, value in metadata.items() if key != "summary"}
     text, image = editorial.render(picked, config, theme, url_check=url_check, now=now)
     visual = editorial.render_visual(picked, config, theme, now)
     if visual_checks:
@@ -945,18 +948,15 @@ def visual_packets(plan, chat, thread, config, image_cache=None, prepared_image=
     return packets
 
 
-def transmit_visual(packet, root, token, fallback=None):
+def transmit_visual(packet, _root, token, fallback=None):
     method, data, files = packet
-    if root is not None:
-        reply = {"message_id": root, "allow_sending_without_reply": True}
-        data = {**data, "reply_parameters": encode(reply)}
     try:
         return send_request(method, data, token, files)
     except TelegramRejected as error:
         if not fallback or method != "sendRichMessage" or error.code != 404:
             raise
         print("Метод Rich Messages недоступен. Отправляется совместимый выпуск.")
-        return transmit_visual(fallback, root, token)
+        return transmit_visual(fallback, _root, token)
 
 
 def classic_fallbacks(plan, packets, chat, thread, config):
