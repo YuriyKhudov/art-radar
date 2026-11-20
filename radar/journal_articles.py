@@ -16,7 +16,7 @@ from radar.local_editor import CLOUDFLARE_MODEL, CloudflareEditor
 
 
 AGENT = "ArtRadarJournal/1.0"
-EDITORIAL_VERSION = 10
+EDITORIAL_VERSION = 11
 WORD = re.compile(r"[\wё]+", re.I)
 NAME_PAIR = re.compile(r"(?=(\b[А-ЯЁ][а-яё.-]{2,}\s+[А-ЯЁ][а-яё.-]{2,}\b))")
 NAME_PREFIX = re.compile(r"(?:художни[кц]|живопис[ец]|куратор|фотограф|мастер|картин|полотн|портрет|"
@@ -310,11 +310,19 @@ def verified_summary(draft, original, exact_names=False, diagnose=None, headline
     for section in sections:
         if not isinstance(section, dict) or not isinstance(section.get("text"), str):
             return failure("paragraph-type")
-        excerpt = " ".join(section["text"].split())
         indices = section.get("evidence")
-        if (not excerpt or not is_russian(excerpt) or not isinstance(indices, list) or not 1 <= len(indices) <= 6
-                or any(type(i) is not int or not 1 <= i <= len(original) for i in indices)
-                or re.search(r"https?://|<[^>]+>|…|\.{3}", excerpt)):
+        if (not isinstance(indices, list) or not 1 <= len(indices) <= 6
+                or any(type(i) is not int or not 1 <= i <= len(original) for i in indices)):
+            return failure("paragraph-format")
+        excerpt = " ".join(section["text"].split())
+        if facts is not None:
+            def remove_citation(match):
+                ids = {int(value) for value in re.findall(r"\d+", match[0])}
+                return "" if ids <= facts.keys() else match[0]
+
+            excerpt = re.sub(r"\s*\[\s*(?:факт(?:ы|ов)?\s+)?\d+(?:\s*[,;]\s*\d+)*\s*\]",
+                             remove_citation, excerpt, flags=re.I).strip()
+        if not excerpt or not is_russian(excerpt) or re.search(r"https?://|<[^>]+>|…|\.{3}", excerpt):
             return failure("paragraph-format")
         if not re.search(r'[.!?][»”")]?$', excerpt):
             excerpt += "."
