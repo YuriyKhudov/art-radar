@@ -283,7 +283,8 @@ def preview_only(item):
     return bool(media.get("video_link") and not (media.get("images") or media.get("video")))
 
 
-DIGITAL_FOCUS = re.compile(r"\b(?:gta|gamedev|game\s+design|concept\s+art|3d|игров[а-яё]+\s+индустри[а-яё]+|"
+DIGITAL_FOCUS = re.compile(r"\b(?:gta|gamedev|game\s+design|concept\s+art|3d|procreate|figma|blender|"
+                           r"рису[а-яё]+\s+на\s+планшете|игров[а-яё]+\s+индустри[а-яё]+|"
                            r"компьютерн[а-яё]+\s+игр[а-яё]*|видеоигр[а-яё]*|геймдизайн[а-яё]*|"
                            r"цифров[а-яё]+\s+дизайн[а-яё]*|дизайн[а-яё]+\s+интерфейс[а-яё]*)\b", re.I)
 
