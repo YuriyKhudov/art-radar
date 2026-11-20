@@ -75,7 +75,7 @@ jobs:
           github-token: ${{ github.token }}
           path: previous-preview
       - uses: actions/download-artifact@v4
-        if: inputs.preview_run_id == '' && inputs.exclude_run_id != ''
+        if: inputs.exclude_run_id != '' && (inputs.mode == 'automatic_preview' || inputs.preview_run_id == '')
         with:
           name: art-radar-journal-preview
           run-id: ${{ inputs.exclude_run_id }}
