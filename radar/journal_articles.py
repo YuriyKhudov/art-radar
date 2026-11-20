@@ -16,7 +16,7 @@ from radar.local_editor import CLOUDFLARE_MODEL, CloudflareEditor
 
 
 AGENT = "ArtRadarJournal/1.0"
-EDITORIAL_VERSION = 12
+EDITORIAL_VERSION = 13
 WORD = re.compile(r"[\wё]+", re.I)
 NAME_PAIR = re.compile(r"(?=(\b[А-ЯЁ][а-яё.-]{2,}\s+[А-ЯЁ][а-яё.-]{2,}\b))")
 NAME_PREFIX = re.compile(r"(?:художни[кц]|живопис[ец]|куратор|фотограф|мастер|картин|полотн|портрет|"
@@ -337,7 +337,7 @@ def verified_summary(draft, original, exact_names=False, diagnose=None, headline
         checks.append({"summary": excerpt, "source": evidence} if facts is None else
                       {"summary": excerpt, "facts": [record for index in dict.fromkeys(indices) for record in facts[index]]})
     length = len("\n\n".join(text))
-    minimum = 300 if short_news else 600 if sum(map(len, original)) >= 1100 else 280
+    minimum = 300 if short_news else 450 if sum(map(len, original)) >= 1100 else 280
     if not minimum <= length <= 1500:
         return failure("summary-length")
     if len(used) < 2 or max(used) < (len(original) + 1) // 2:
@@ -427,7 +427,7 @@ class ArticleChecks:
                     failures[-1] += f":{self.model.last_error}"
                 feedback = [{
                     "copied-prose": "Совпадение с оригиналом. Перестрой каждое предложение и порядок деталей.",
-                    "summary-length": "Напиши 2–3 абзаца общим объёмом 650–1050 знаков или 320–500 для короткой новости.",
+                    "summary-length": "Дай два содержательных абзаца. Для статьи нужно от 450 знаков, для короткой новости от 300. Не добавляй сведения ради объёма.",
                     "repeated-fact": REPEAT_FEEDBACK,
                     "unverified-number": "Убери неподтверждённые цифры. Не восстанавливай даты или числа по памяти.",
                 }.get(failures[-1].split(":", 1)[0], failures[-1])]
