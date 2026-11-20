@@ -354,6 +354,13 @@ class EditorialTest(unittest.TestCase):
             self.assertNotIn("article", packet)
             self.assertTrue(all(paragraph not in json.dumps(packet, ensure_ascii=False) for paragraph in original))
 
+    def test_fact_extraction_ignores_reported_speech_and_artistic_hypotheses(self):
+        titles = {("не", "ждали")}
+        self.assertIsNone(journal_articles.single_fact("В мясных лавках продают крыс, писал Мане своей знакомой.", titles))
+        self.assertIsNone(journal_articles.single_fact("Серов, вероятно, написал портрет для музейной выставки.", titles))
+        self.assertEqual(journal_articles.single_fact("Лицо героя Репин переписывал четыре раза.", titles),
+                         {"before": ["Лицо героя Репин"], "action": "переписывал", "after": ["четыре раза"]})
+
     def test_transmission_switches_to_classic_only_for_explicit_unsupported_response(self):
         rich = ("sendRichMessage", {}, [])
         classic = ("sendMessage", {}, [])
