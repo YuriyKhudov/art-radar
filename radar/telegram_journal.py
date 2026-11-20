@@ -1356,7 +1356,8 @@ def main():
             if not (args.examples or args.snapshot):
                 live = combine(journal.items(), live)
                 source_report = source_report or json.loads(journal.setting("source_report") or "[]")
-            pool = combine(live, [] if args.examples or args.snapshot or args.automatic_issues else archive)
+            include_archive = bool(args.automatic_issues) or not (args.examples or args.snapshot)
+            pool = combine(live, archive if include_archive else [])
             if args.only_url:
                 keys = {sources.canonical(url) for url in args.only_url}
                 pool = [item for item in combine(live, archive) if sources.canonical(item["url"]) in keys]
