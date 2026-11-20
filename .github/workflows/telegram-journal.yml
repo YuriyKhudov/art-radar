@@ -1,279 +1,62 @@
-name: Журнал Art Radar
-
-on:
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: Предпросмотр, диагностика API, личный тест или сверка с Telegram
-        type: choice
-        options: [preview, check_platforms, private_test, prepare_group, confirmed, absent]
-        default: preview
-      issue:
-        description: Номер выпуска для сверки
-        type: string
-      message:
-        description: Номер сообщения в теме Telegram при подтверждении
-        type: string
-      preview_run_id:
-        description: Номер успешного запуска preview для повторного оформления или личной отправки
-        type: string
-      exclude_run_id:
-        description: Номер предыдущего предпросмотра, материалы которого нужно исключить из свежего выпуска
-        type: string
-      visual:
-        description: Формат личного теста
-        type: choice
-        options: [rich, classic, legacy]
-        default: rich
-      comparison:
-        description: Проверочный выпуск с разрешёнными иллюстрациями из сохранённой выгрузки
-        type: boolean
-        default: false
-      illustrated:
-        description: Проверить вёрстку на свежих материалах с подтверждёнными иллюстрациями
-        type: boolean
-        default: false
-      preview_urls:
-        description: Ссылки пробной подборки через пробел. Обычный запуск использует все источники
-        type: string
-      update_test:
-        description: Обновить уже подтверждённый личный Rich Messages из того же предпросмотра
-        type: boolean
-        default: false
-  schedule:
-    - cron: "0,30 * * * *"
-
-permissions:
-  contents: read
-
+name: GigaChat API connectivity check
+on: workflow_dispatch
+permissions: {}
 jobs:
-  preview:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'preview'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        if: vars.ART_RADAR_JOURNAL_SCHEDULED == '1'
-        with:
-          ref: art-radar-journal-state
-          path: journal-state
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Установить средства подготовки журнала
-        run: python -m pip install "Pillow==12.3.0" "trafilatura==2.3.1" "Protego==0.7.0"
-      - uses: actions/download-artifact@v4
-        if: inputs.preview_run_id != ''
-        with:
-          name: art-radar-journal-preview
-          run-id: ${{ inputs.preview_run_id }}
-          github-token: ${{ github.token }}
-          path: previous-preview
-      - uses: actions/download-artifact@v4
-        if: inputs.preview_run_id == '' && inputs.exclude_run_id != ''
-        with:
-          name: art-radar-journal-preview
-          run-id: ${{ inputs.exclude_run_id }}
-          github-token: ${{ github.token }}
-          path: excluded-preview
-      - name: Оформить выпуск из сохранённого отбора
-        if: inputs.preview_run_id != '' && !inputs.comparison
-        run: >-
-          python -m radar.telegram_journal preview
-          --snapshot previous-preview/harvest.json --selection previous-preview/selection.json
-      - name: Подготовить одинаковый выпуск для двух визуальных вариантов
-        if: inputs.preview_run_id != '' && inputs.comparison
-        run: >-
-          python -m radar.telegram_journal preview --snapshot previous-preview/harvest.json
-          --selection previous-preview/selection.json --comparison
-      - name: Собрать выпуск для просмотра
-        if: inputs.preview_run_id == ''
-        env:
-          EXCLUDE_RUN_ID: ${{ inputs.exclude_run_id }}
-          ILLUSTRATED: ${{ inputs.illustrated }}
-          PREVIEW_URLS: ${{ inputs.preview_urls }}
-          ART_RADAR_RUN_LOCAL_EDITOR: '1'
-          ART_RADAR_EDITOR_CACHE: ${{ runner.temp }}/art-radar-editor
-          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
-          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
-        run: |
-          set -eu
-          args=()
-          if [[ -n "$EXCLUDE_RUN_ID" ]]; then args+=(--exclude-audit excluded-preview/audit.json); fi
-          if [[ "$ILLUSTRATED" == true ]]; then args+=(--illustrated); fi
-          read -r -a preview_urls <<< "$PREVIEW_URLS"
-          for url in "${preview_urls[@]}"; do args+=(--only-url "$url"); done
-          python -m radar.telegram_journal --db journal-state/journal.sqlite3 preview --refresh "${args[@]}"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: art-radar-journal-preview
-          path: journal-preview/
-
-  check_platforms:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'check_platforms'
+  probe:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Проверить доступ к публичным метаданным видео
-        env:
-          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
-          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
-        run: python -m radar.telegram_journal check-platforms
-
-  private_test:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'private_test' && github.ref_name == github.event.repository.default_branch
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    permissions:
-      actions: read
-      contents: write
-    concurrency:
-      group: art-radar-journal-test-state
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Проверить происхождение выпуска для теста
-        shell: bash
-        env:
-          RUN_ID: ${{ inputs.preview_run_id }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          GH_TOKEN: ${{ github.token }}
+      - name: Probe OAuth and models with certificate verification
         run: |
-          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" |
-            jq -e --arg branch "$DEFAULT_BRANCH" --arg repo "$GITHUB_REPOSITORY" '
-              ((.path // "") | split("@")[0]) == ".github/workflows/telegram-journal.yml" and .head_branch == $branch and
-              .head_repository.full_name == $repo and .event == "workflow_dispatch" and .conclusion == "success"
-            '
-      - uses: actions/download-artifact@v4
-        with:
-          name: art-radar-journal-preview
-          run-id: ${{ inputs.preview_run_id }}
-          github-token: ${{ github.token }}
-          path: approved-preview
-      - uses: actions/checkout@v4
-        with:
-          path: journal-test-state
-      - name: Открыть отдельную ветку тестовых доставок
-        working-directory: journal-test-state
-        run: |
-          ref=refs/heads/art-radar-journal-test-state
-          if git ls-remote --exit-code --heads origin "$ref"; then
-            git fetch --no-tags origin "$ref"
-            git switch -C art-radar-journal-test-state FETCH_HEAD
-          else
-            status=$?
-            if [ "$status" -ne 2 ]; then exit "$status"; fi
-            git switch --orphan art-radar-journal-test-state
-          fi
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Установить средство подготовки визуальных карточек
-        if: inputs.visual != 'legacy'
-        run: python -m pip install "Pillow==12.3.0"
-      - name: Отправить единственный выпуск в подтверждённый личный чат
-        env:
-          VISUAL_VARIANT: ${{ inputs.visual }}
-          UPDATE_TEST: ${{ inputs.update_test }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
-          ART_RADAR_TEST_CHAT_ID: ${{ secrets.ART_RADAR_TEST_CHAT_ID }}
-        run: |
-          args=()
-          if [[ "$UPDATE_TEST" == true ]]; then args+=(--update); fi
-          python -m radar.telegram_journal --git-state test-send \
-            --audit approved-preview/audit.json --test-db journal-test-state/journal-test.sqlite3 \
-            --variant "$VISUAL_VARIANT" "${args[@]}"
-
-  journal:
-    if: >-
-      (github.event_name == 'schedule' && vars.ART_RADAR_JOURNAL_SCHEDULED == '1') ||
-      (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch &&
-        (inputs.mode == 'prepare_group' || inputs.mode == 'confirmed' || inputs.mode == 'absent'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    concurrency:
-      group: art-radar-journal-state
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        if: inputs.mode != 'prepare_group'
-        with:
-          ref: art-radar-journal-state
-          path: journal-state
-      - uses: actions/checkout@v4
-        if: inputs.mode == 'prepare_group'
-        with:
-          path: journal-state
-      - name: Открыть отдельную ветку рабочего журнала
-        if: inputs.mode == 'prepare_group'
-        working-directory: journal-state
-        run: |
-          ref=refs/heads/art-radar-journal-state
-          if git ls-remote --exit-code --heads origin "$ref"; then
-            git fetch --no-tags origin "$ref"
-            git switch -C art-radar-journal-state FETCH_HEAD
-          else
-            status=$?
-            if [ "$status" -ne 2 ]; then exit "$status"; fi
-            git switch --orphan art-radar-journal-state
-          fi
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Установить средства подготовки журнала
-        if: github.event_name == 'schedule'
-        run: python -m pip install "Pillow==12.3.0" "trafilatura==2.3.1" "Protego==0.7.0"
-      - name: Проверить готовность группы или обработать расписание
-        if: github.event_name == 'schedule' || inputs.mode == 'prepare_group'
-        env:
-          EVENT: ${{ github.event_name }}
-          ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
-          ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
-          ART_RADAR_JOURNAL_FORMAT: ${{ vars.ART_RADAR_JOURNAL_FORMAT }}
-          ART_RADAR_RUN_LOCAL_EDITOR: '1'
-          ART_RADAR_EDITOR_CACHE: ${{ runner.temp }}/art-radar-editor
-          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
-          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
-          JOURNAL_TELEGRAM_TOKEN: ${{ secrets.JOURNAL_TELEGRAM_TOKEN }}
-          JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
-          JOURNAL_TELEGRAM_TOPIC: ${{ secrets.JOURNAL_TELEGRAM_TOPIC }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
-        run: |
-          command=scheduled
-          if [[ "$EVENT" == workflow_dispatch ]]; then command=prepare-group; fi
-          python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state "$command"
-      - name: Записать результат сверки
-        if: inputs.mode == 'confirmed' || inputs.mode == 'absent'
-        env:
-          MODE: ${{ inputs.mode }}
-          ISSUE: ${{ inputs.issue }}
-          MESSAGE: ${{ inputs.message }}
-        run: |
-          if [ "$MODE" = confirmed ]; then
-            python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state reconcile "$ISSUE" --sent "$MESSAGE"
-          else
-            python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state reconcile "$ISSUE" --absent
-          fi
+          python3 - <<'PY'
+          import hashlib, json, ssl, urllib.error, urllib.parse, urllib.request, uuid
+          
+          ca_url = "https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt"
+          endpoints = [
+              ("OAuth", "https://ngw.devices.sberbank.ru:9443/api/v2/oauth", "POST"),
+              ("Models", "https://api.giga.chat/v1/models", "GET"),
+          ]
+          contexts = [("System roots", ssl.create_default_context())]
+          try:
+              with urllib.request.urlopen(ca_url, timeout=12) as response:
+                  ca = response.read(65536).decode("ascii")
+              certificate = ssl.PEM_cert_to_DER_cert(ca.strip())
+              ctx = ssl.create_default_context()
+              ctx.load_verify_locations(cadata=ca)
+              print("Official CA retrieved with verified TLS; SHA-256", hashlib.sha256(certificate).hexdigest(), flush=True)
+              contexts.append(("System roots plus official CA", ctx))
+          except (OSError, ValueError) as error:
+              print("Official CA retrieval:", type(error).__name__, str(error), flush=True)
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+          
+          reachable = set()
+          for name, context in contexts:
+              opener = urllib.request.build_opener(NoRedirect(), urllib.request.HTTPSHandler(context=context))
+              for target, url, method in endpoints:
+                  headers = {"Accept": "application/json", "User-Agent": "ArtRadar-GigaChat-Connectivity"}
+                  data = None
+                  if method == "POST":
+                      headers["Content-Type"] = "application/x-www-form-urlencoded"
+                      headers["RqUID"] = str(uuid.uuid4())
+                      data = urllib.parse.urlencode({"scope": "GIGACHAT_API_PERS"}).encode()
+                  request = urllib.request.Request(url, data=data, method=method, headers=headers)
+                  try:
+                      with opener.open(request, timeout=12) as response:
+                          print(f"{name} | {target}: HTTP {response.status}; TLS verified", flush=True)
+                          if response.status == 200 and method == "GET":
+                              reachable.add(target)
+                  except urllib.error.HTTPError as error:
+                      body = error.read(350).decode("utf-8", "replace")
+                      print(f"{name} | {target}: HTTP {error.code}; TLS verified; {body!r}", flush=True)
+                      if error.code in (400, 401):
+                          reachable.add(target)
+                  except OSError as error:
+                      print(f"{name} | {target}: {type(error).__name__}: {error}", flush=True)
+          
+          print("Endpoints reached and requesting authorization:", ", ".join(sorted(reachable)), flush=True)
+          if len(reachable) != len(endpoints):
+              raise SystemExit(1)
+          PY
