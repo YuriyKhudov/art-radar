@@ -391,8 +391,9 @@ def prepare(pool, config, history, now, theme, sequence, verify, article_checks=
                 primary = url_check(card.item["url"], card.source["domains"])
                 known = card.item.get("related_urls", [])
                 linked = sources.confirmed_video_refs(card.item, card.source) if not getattr(url_check, "replay", False) else []
-                alternatives = [url for url in dict.fromkeys([*known, *linked]) if sources.video_platform(url)
-                                and url_check(url, [urllib.parse.urlsplit(sources.canonical(url)).hostname])]
+                direct = (sources.canonical(url) for url in [*known, *linked] if sources.video_platform(url))
+                alternatives = [url for url in dict.fromkeys(direct)
+                                if url_check(url, [urllib.parse.urlsplit(url).hostname])]
                 if alternatives:
                     card.item["verified_video_urls"] = alternatives
                     card.item["related_urls"] = alternatives
