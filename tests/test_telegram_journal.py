@@ -626,6 +626,7 @@ class JournalTest(unittest.TestCase):
         with (self.store() as conn, patch.dict(os.environ, {}, clear=True),
               patch.object(journal, "now_moscow", return_value=prepared),
               patch.object(journal.Journal, "daily", return_value=False), patch.object(journal, "prepare", side_effect=select),
+              patch.object(journal.journal_archive, "collect", return_value=([], [])),
               patch.object(journal.visual_issue, "make_plan", return_value=[]),
               patch.object(journal, "freeze_packets", return_value=b"stable bytes"),
               patch.object(journal, "send_request") as send):

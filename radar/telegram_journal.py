@@ -26,7 +26,7 @@ from http.client import HTTPException
 from pathlib import Path
 
 from radar import (artist_pages, artist_radar, editorial, editorial_sources as sources, journal_articles,
-                   journal_cover, journal_reserve, journal_visuals, visual_issue)
+                   journal_archive, journal_cover, journal_reserve, journal_visuals, visual_issue)
 
 MOSCOW = dt.timezone(dt.timedelta(hours=3), "MSK")
 DEFAULT_DB = sources.ROOT.parent / "data" / "journal.sqlite3"
@@ -219,20 +219,19 @@ class Journal:
             SELECT 1 FROM issues WHERE scheduled_for=? OR (status='sent' AND substr(sent,1,10)=?)
         """, (slot, slot)).fetchone() is not None
 
-    def claim_ready(self, slot, now, destination):
+    def claim_ready(self, slot, now, destination, size):
         with self.conn:
             self.conn.execute("BEGIN IMMEDIATE")
             if self.clock()[2] or self.slot_claimed(slot):
                 return None
-            ready = self.conn.execute("SELECT items,packets FROM ready_issues WHERE slot=?", (slot,)).fetchone()
+            ready = self.conn.execute("SELECT items FROM ready_issues WHERE slot=?", (slot,)).fetchone()
             if not ready:
                 return None
-            batch, packets = ready
             issue = self.conn.execute("""
                 INSERT INTO issues (status, attempted, items, scheduled_for) VALUES ('pending', ?, ?, ?)
-            """, (now.isoformat(), batch, slot)).lastrowid
+            """, (now.isoformat(), ready[0], slot)).lastrowid
             self.deliveries.record(f"issue:{issue}", {"slot": slot, "destination": destination,
-                                                     "size": len(thaw_packets(packets))})
+                                                     "size": size})
             return issue
 
     def resolve(self, issue, message_id, now=None, *, partial=False):
@@ -1204,7 +1203,7 @@ def queue_status(journal, config, now):
                         SELECT slot,prepared,json_array_length(items),length(packets) FROM ready_issues
                         WHERE slot>=? AND NOT EXISTS(SELECT 1 FROM issues WHERE scheduled_for=slot)
                         ORDER BY slot
-                      """, (now.date().isoformat(),))]}
+                      """, (day.isoformat(),))]}
 
 
 def prepare_queue(journal, config, archive, persist):
@@ -1235,6 +1234,16 @@ def prepare_queue(journal, config, archive, persist):
     if all(day.isoformat() in queued for day in slots):
         print(encode(queue_status(journal, config, now)))
         return
+    if journal.setting("reserve_archive_collected_on") != today.isoformat():
+        archived, report = journal_archive.collect(config, "reserve_archive_indexes")
+        if any(row["status"] == "ok" for row in report):
+            with journal.conn:
+                journal.conn.executemany("INSERT OR REPLACE INTO feed_items VALUES (?,?,?)",
+                                         [(sources.canonical(item["url"]), encode(item), today.isoformat())
+                                          for item in archived])
+                journal.put("reserve_archive_collected_on", today.isoformat())
+            persist()
+        print(encode({"archive_reserve": report, "items": len(archived)}))
     _, count, _ = journal.clock()
     history = journal.history() + [row["item"] for batch in queued.values() for row in batch]
     pool = combine(journal.items(), archive)
@@ -1257,8 +1266,14 @@ def prepare_queue(journal, config, archive, persist):
         if not picked:
             reasons = Counter(row["decision"] for row in result["items"])
             print(encode({"slot": slot, "status": "no-ready-issue", "decisions": reasons}))
+            if copies:
+                print(encode({"article_rejections": [dict(url=url, reason=record["reason"], checks=record.get("checks"),
+                                                         provider_error=record.get("provider_error"))
+                                                     for url, record in copies.results.items() if record.get("reason")]}))
             persist()
             break
+        if config.get("visual_selection") and not verified_visual_issue(result["visual"]):
+            raise ValueError("Подготовленный выпуск не прошёл проверку визуальных материалов.")
         entries = visual_issue.make_plan(result["visual"], variant)
         try:
             packets = freeze_packets(entries, config, journal.prepared_image)
@@ -1272,7 +1287,8 @@ def prepare_queue(journal, config, archive, persist):
             break
         batch = [{"item": c.item, "url": c.key, "score": c.score, "ratings": c.metrics} for c in picked]
         with journal.conn:
-            journal.conn.execute("INSERT INTO ready_issues VALUES (?,?,?,?)", (slot, now.isoformat(), encode(batch), packets))
+            journal.conn.execute("INSERT INTO ready_issues VALUES (?,?,?,?)",
+                                 (slot, now_moscow().isoformat(), encode(batch), packets))
         history.extend(c.item for c in picked)
         persist()
     print(encode(queue_status(journal, config, now)))
@@ -1312,7 +1328,7 @@ def publish_queue(journal, config, persist):
     if pending and plan["destination"] != destination:
         raise ValueError("Чат или тема ожидающего выпуска изменились. Сверьте настройки доставки.")
     packets = thaw_packets(ready[0], chat, thread)
-    issue = pending or journal.claim_ready(slot, now, destination)
+    issue = pending or journal.claim_ready(slot, now, destination, len(packets))
     if not issue:
         return
     if not pending:

@@ -7,9 +7,9 @@ from urllib.parse import urljoin, urlsplit
 from radar import editorial_sources as sources, journal_articles
 
 
-def collect(config):
+def collect(config, field="archive_indexes"):
     indexes = [(source, url) for source in config["sources"] if source.get("enabled")
-               for url in source.get("archive_indexes", [])]
+               for url in source.get(field, [])]
 
     def harvest(pair):
         source, url = pair

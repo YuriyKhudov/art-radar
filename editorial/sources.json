@@ -390,7 +390,16 @@
     {"id":"dari-vk","publisher":"dari","name":"Дари Арт · VK Видео","lang":"ru","priority":4.1,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","owner":-72292077,"topics":["studio","colour","techniques"]},
     {"id":"rizhkin-vk","publisher":"rizhkin","name":"Александр Рыжкин · VK Видео","lang":"ru","priority":4.6,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","screen_name":"rizhkin","topics":["portrait","techniques"]},
     {"id":"fler-vk","publisher":"fler","name":"Александра Малыгина · VK Видео","lang":"ru","priority":4.4,"creator":true,"enabled":true,"domains":["vkvideo.ru"],"connector":"vk","screen_name":"flers_art","topics":["studio","techniques"]},
-    {"id":"arzamas","name":"Arzamas","lang":"ru","priority":5,"enabled":true,"domains":["arzamas.academy"],"archive_indexes":["https://arzamas.academy/themes/masterpiece","https://arzamas.academy/themes/painting","https://arzamas.academy/themes/painting?page=12","https://arzamas.academy/themes/gallery?type=Material"]},
+    {"id":"arzamas","name":"Arzamas","lang":"ru","priority":5,"enabled":true,"domains":["arzamas.academy"],"archive_indexes":["https://arzamas.academy/themes/masterpiece","https://arzamas.academy/themes/painting","https://arzamas.academy/themes/painting?page=12","https://arzamas.academy/themes/gallery?type=Material"],
+      "reserve_archive_indexes":[
+        "https://arzamas.academy/themes/painting?page=3",
+        "https://arzamas.academy/themes/painting?page=4",
+        "https://arzamas.academy/themes/painting?page=5",
+        "https://arzamas.academy/themes/painting?page=7",
+        "https://arzamas.academy/themes/painting?page=10",
+        "https://arzamas.academy/themes/painting?page=11",
+        "https://arzamas.academy/themes/painting?page=13"
+      ]},
     {"id":"lavrus","publisher":"tretyakov","name":"Лаврус · Третьяковская галерея","lang":"ru","priority":5,"enabled":true,"domains":["lavrus.tretyakov.ru"]},
     {"id":"culture","name":"Культура.РФ","lang":"ru","priority":4.7,"enabled":true,"domains":["culture.ru","ar.culture.ru"]},
     {"id":"rusmuseum","name":"Русский музей","lang":"ru","priority":5,"enabled":true,"domains":["rusmuseum.ru","virtual.rusmuseumvrm.ru","rusmuseumvrm.ru","app.rusmuseum.ru"]},
