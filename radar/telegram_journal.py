@@ -1241,6 +1241,9 @@ def prepare_queue(journal, config, archive, persist):
                 journal.conn.executemany("INSERT OR REPLACE INTO feed_items VALUES (?,?,?)",
                                          [(sources.canonical(item["url"]), encode(item), today.isoformat())
                                           for item in archived])
+                if config.get("accumulate_reserve"):
+                    candidates, _ = editorial.assess(archived, config, now, journal.history())
+                    journal.editorial_reserve.replenish(candidates, now, config["news_days"])
                 journal.put("reserve_archive_collected_on", today.isoformat())
             persist()
         print(encode({"archive_reserve": report, "items": len(archived)}))

@@ -20,6 +20,9 @@ on:
       exclude_run_id:
         description: Номер предыдущего предпросмотра, материалы которого нужно исключить из свежего выпуска
         type: string
+      queue_run_id:
+        description: Номер запуска check_queue для теста сохранённой очереди
+        type: string
       visual:
         description: Формат личного теста
         type: choice
@@ -258,7 +261,7 @@ jobs:
             --variant "$VISUAL_VARIANT" "${args[@]}"
 
   queue_test_prepare:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'check_queue'
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'check_queue' && inputs.queue_run_id == ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -290,22 +293,35 @@ jobs:
 
   queue_test_publish:
     needs: queue_test_prepare
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'check_queue' &&
+      (needs.queue_test_prepare.result == 'success' || inputs.queue_run_id != '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: read
       contents: read
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v4
+        if: inputs.queue_run_id == ''
         with:
           name: art-radar-queue-test
+          path: queue-test
+      - uses: actions/download-artifact@v4
+        if: inputs.queue_run_id != ''
+        with:
+          name: art-radar-queue-test
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.queue_run_id }}
           path: queue-test
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Проверить отправку из сохранённой очереди без сети
+      - run: python -m pip install "Pillow==12.3.0"
+      - name: Проверить отправку из сохранённой очереди с имитацией Telegram
         env:
           ART_RADAR_QUEUE_TEST_DB: queue-test/journal.sqlite3
         run: python -m unittest discover -s tests -v
