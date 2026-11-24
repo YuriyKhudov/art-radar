@@ -1,5 +1,6 @@
 {
-  "publish_time": "19:00",
+  "publish_time": "11:00",
+  "cycle_start": "2026-11-20",
   "interval_days": 3,
   "news_days": 7,
   "russian_share": 0.7,

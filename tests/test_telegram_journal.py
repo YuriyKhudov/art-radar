@@ -2,6 +2,8 @@ import datetime as dt
 import hashlib
 import io
 import json
+import os
+import shutil
 import sqlite3
 import tempfile
 import unittest
@@ -17,7 +19,7 @@ from radar import (artist_pages, editorial, editorial_sources as sources, journa
 NOW = dt.datetime(2026, 11, 18, 19, tzinfo=journal.MOSCOW)
 CONFIG = sources.read(sources.ROOT / "sources.json")
 ARCHIVE = [item for item in sources.read(sources.ROOT / "materials.json") if item["type"] == "archive"]
-CREDS = {"ART_RADAR_JOURNAL_PUBLISH": "1", "ART_RADAR_JOURNAL_FORMAT": "legacy", "JOURNAL_TELEGRAM_TOKEN": "example",
+CREDS = {"ART_RADAR_JOURNAL_PUBLISH": "1", "ART_RADAR_JOURNAL_FORMAT": "rich", "JOURNAL_TELEGRAM_TOKEN": "example",
          "JOURNAL_TELEGRAM_CHAT": "-123", "JOURNAL_TELEGRAM_TOPIC": "456"}
 
 
@@ -574,7 +576,7 @@ class JournalTest(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(self.folder.cleanup)
         self.path = Path(self.folder.name) / "journal.sqlite3"
-        self.config = {**CONFIG, "theme_every": 0, "article_domains": [], "visual_selection": False}
+        self.config = {**CONFIG, "cycle_start": "2026-11-18", "theme_every": 0, "article_domains": [], "visual_selection": False}
         self.quiet = redirect_stdout(io.StringIO())
         self.quiet.__enter__()
         self.addCleanup(self.quiet.__exit__, None, None, None)
@@ -582,13 +584,10 @@ class JournalTest(unittest.TestCase):
     def store(self):
         return closing(sqlite3.connect(self.path))
 
-    def test_schedule_uses_local_day_and_time(self):
-        last = "2026-11-15T20:04:00+03:00"
-        hour = dt.time(19)
-        self.assertFalse(journal.due(NOW - dt.timedelta(minutes=1), last, hour, 3))
-        self.assertFalse(journal.due(NOW - dt.timedelta(days=1), last, hour, 3))
-        self.assertTrue(journal.due(NOW.astimezone(dt.timezone.utc), last, hour, 3))
-        self.assertFalse(journal.due(NOW, last, hour, 3, "2026-11-18"))
+    def test_calendar_stays_anchored_after_a_missed_or_late_release(self):
+        self.assertEqual(journal.release_slot(NOW, self.config), NOW.date())
+        self.assertEqual(journal.release_slot(NOW + dt.timedelta(days=1), self.config), NOW.date() + dt.timedelta(days=3))
+        self.assertEqual(journal.release_slot(NOW, self.config, after_today=True), NOW.date() + dt.timedelta(days=3))
 
     def test_daily_storage_survives_failed_feeds(self):
         article = {**ARCHIVE[0], "url": "https://arzamas.academy/mag/487-serov?utm_source=test"}
@@ -605,60 +604,97 @@ class JournalTest(unittest.TestCase):
             self.assertEqual(len(state.items()), 1)
             self.assertEqual(collect.call_count, 3)
 
-    def test_success_persists_state_before_send_and_blocks_restarts(self):
-        def send(*_):
+    def save_ready(self, state, slot, messages=2):
+        posts = [(("sendMessage", {"chat_id": "", "text": f"Карточка {i}"}, []), None) for i in range(messages)]
+        packed = journal.gzip.compress(journal.encode(posts).encode())
+        items = journal.encode([{"url": row["url"], "item": row} for row in fresh()])
+        with state.conn:
+            state.conn.execute("INSERT INTO ready_issues VALUES (?,?,?,?)",
+                               (slot.isoformat(), (NOW - dt.timedelta(days=1)).isoformat(), items, packed))
+
+    def test_preparation_creates_two_durable_nonduplicated_issues(self):
+        prepared = NOW - dt.timedelta(days=1)
+        reports = [{"visual": {"cards": []}, "items": []}] * 2
+        first, second = [SimpleNamespace(item=row, key=row["url"], score=88, metrics={}) for row in fresh()[:2]]
+        third, fourth = [SimpleNamespace(item=row, key=row["url"], score=88, metrics={}) for row in fresh()[2:]]
+        seen = []
+
+        def select(pool, config, history, at, *args, **kwargs):
+            seen.append((at.date(), {item["url"] for item in history}))
+            return ([first, second] if len(seen) == 1 else [third, fourth]), reports[len(seen) - 1]
+
+        with (self.store() as conn, patch.dict(os.environ, {}, clear=True),
+              patch.object(journal, "now_moscow", return_value=prepared),
+              patch.object(journal.Journal, "daily", return_value=False), patch.object(journal, "prepare", side_effect=select),
+              patch.object(journal.visual_issue, "make_plan", return_value=[]),
+              patch.object(journal, "freeze_packets", return_value=b"stable bytes"),
+              patch.object(journal, "send_request") as send):
+            journal.prepare_queue(journal.Journal(conn), self.config, [], Mock())
+            send.assert_not_called()
+        with self.store() as conn:
+            ready = journal.queue_status(journal.Journal(conn), self.config, prepared)["ready"]
+            self.assertEqual([r["slot"] for r in ready], ["2026-11-18", "2026-11-21"])
+            self.assertEqual([r["materials"] for r in ready], [2, 2])
+        self.assertEqual(seen[1][1], {first.key, second.key})
+
+    def test_late_release_uses_persisted_packets_and_never_sends_twice(self):
+        with self.store() as conn:
+            self.save_ready(journal.Journal(conn), NOW.date())
+        before = NOW.replace(hour=10, minute=59)
+        late = NOW.replace(hour=14, minute=3)
+
+        def send(method, data, token, files):
             with self.store() as conn:
                 self.assertIsNotNone(journal.Journal(conn).clock()[2])
-            self.assertEqual(persist.call_count, 2)
-            return 123
+            self.assertEqual(data["chat_id"], "-123")
+            return next(receipts)
 
-        persist = Mock()
-        with (patch.dict(journal.os.environ, CREDS, clear=True), patch.object(journal, "now_moscow", return_value=NOW),
-              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
-              patch.object(journal, "send", side_effect=send) as transport):
-            for _ in range(2):
+        receipts = iter((123, 124))
+        with (patch.dict(os.environ, CREDS, clear=True), patch.object(journal, "now_moscow", return_value=before) as clock,
+              patch.object(journal, "send_request", side_effect=send) as transport, patch.object(visual_issue.time, "sleep"),
+              patch.object(journal.Journal, "daily", side_effect=AssertionError("No collection")),
+              patch.object(journal, "prepare", side_effect=AssertionError("No editing or visual verification"))):
+            with self.store() as conn:
+                journal.publish_queue(journal.Journal(conn), self.config, Mock())
+            transport.assert_not_called()
+            for when in (late, late + dt.timedelta(minutes=20), late + dt.timedelta(days=1)):
+                clock.return_value = when
                 with self.store() as conn:
-                    journal.scheduled(journal.Journal(conn), self.config, fresh(), persist)
-            with self.store() as conn:
-                state = journal.Journal(conn)
-                self.assertEqual(state.clock(), (NOW.isoformat(), 1, None))
-                self.assertGreaterEqual(len(state.history()), 3)
-            transport.assert_called_once()
+                    journal.publish_queue(journal.Journal(conn), self.config, Mock())
+            self.assertEqual(transport.call_count, 2)
+        with self.store() as conn:
+            state = journal.Journal(conn)
+            self.assertEqual(state.clock(), (late.isoformat(), 1, None))
+            self.assertEqual(len(state.history()), len(fresh()))
 
-    def test_ambiguous_delivery_blocks_retry_until_reconciled(self):
-        with (patch.dict(journal.os.environ, CREDS, clear=True), patch.object(journal, "now_moscow", return_value=NOW) as clock,
-              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
-              patch.object(journal, "send", side_effect=RuntimeError("Timeout")) as transport):
-            with self.store() as conn, self.assertRaises(RuntimeError):
-                journal.scheduled(journal.Journal(conn), self.config, fresh(), Mock())
-            clock.return_value = NOW + dt.timedelta(days=4)
+    def test_unknown_receipt_blocks_retry_until_reconciled(self):
+        now = NOW.replace(hour=11)
+        with (patch.dict(os.environ, CREDS, clear=True), patch.object(journal, "now_moscow", return_value=now),
+              patch.object(journal, "send_request", side_effect=[123, RuntimeError("Timeout"), 125]) as transport,
+              patch.object(visual_issue.time, "sleep")):
             with self.store() as conn:
                 state = journal.Journal(conn)
-                journal.scheduled(state, self.config, fresh(), Mock())
-                state.resolve(state.clock()[2], 130)
-                self.assertEqual(state.clock(), (NOW.isoformat(), 1, None))
-            transport.assert_called_once()
+                self.save_ready(state, NOW.date(), 3)
+                with self.assertRaises(RuntimeError):
+                    journal.publish_queue(state, self.config, Mock())
+            with self.store() as conn:
+                state = journal.Journal(conn)
+                journal.publish_queue(state, self.config, Mock())
+                self.assertEqual(transport.call_count, 2)
+                state.deliveries.reconcile(f"issue:{state.clock()[2]}", 124)
+                journal.publish_queue(state, self.config, Mock())
+                self.assertEqual(state.clock(), (now.isoformat(), 1, None))
+                self.assertEqual([call.args[1]["text"] for call in transport.call_args_list],
+                                 ["Карточка 0", "Карточка 1", "Карточка 2"])
 
     def test_disabled_publish_does_not_need_token_or_touch_telegram(self):
-        with (self.store() as conn, patch.dict(journal.os.environ, {}, clear=True),
-              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "send") as transport):
+        with (self.store() as conn, patch.dict(os.environ, {}, clear=True),
+              patch.object(journal, "send_request") as transport):
             state = journal.Journal(conn)
-            journal.scheduled(state, self.config, fresh(), Mock())
+            self.save_ready(state, NOW.date())
+            journal.publish_queue(state, self.config, Mock())
             self.assertEqual(state.clock(), (None, 0, None))
             transport.assert_not_called()
-
-    def test_scheduled_uses_one_rich_message_by_default(self):
-        env = {name: value for name, value in CREDS.items() if name != "ART_RADAR_JOURNAL_FORMAT"}
-        with (self.store() as conn, patch.dict(journal.os.environ, env, clear=True),
-              patch.object(journal, "now_moscow", return_value=NOW),
-              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
-              patch.object(journal, "send_request", return_value=101) as transport, redirect_stdout(io.StringIO())):
-            state = journal.Journal(conn)
-            journal.scheduled(state, self.config, fresh(), Mock())
-            journal.scheduled(state, self.config, fresh(), Mock())
-            transport.assert_called_once()
-            self.assertEqual(transport.call_args.args[0], "sendRichMessage")
-            self.assertEqual(state.clock(), (NOW.isoformat(), 1, None))
 
     def test_group_preflight_checks_existing_credentials_without_sending(self):
         env = {"TELEGRAM_BOT_TOKEN": "bot", "TELEGRAM_CHAT_ID": "-123", "TELEGRAM_THREAD_ID": "456"}
@@ -672,18 +708,19 @@ class JournalTest(unittest.TestCase):
             persisted.assert_called_once()
             send.assert_not_called()
 
-    def test_empty_selection_skips_day_and_never_tries_to_catch_up(self):
-        with (self.store() as conn, patch.dict(journal.os.environ, CREDS, clear=True),
-              patch.object(journal, "now_moscow", return_value=NOW) as clock,
-              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
-              patch.object(journal, "send", return_value=123) as transport):
+    def test_empty_or_expired_slot_is_not_backfilled(self):
+        scheduled = NOW.replace(hour=11)
+        with (self.store() as conn, patch.dict(os.environ, CREDS, clear=True),
+              patch.object(journal, "now_moscow", return_value=scheduled) as clock,
+              patch.object(journal, "send_request") as transport):
             state = journal.Journal(conn)
-            journal.scheduled(state, self.config, [], Mock())
-            journal.scheduled(state, self.config, fresh(), Mock())
+            journal.publish_queue(state, self.config, Mock())
+            self.save_ready(state, NOW.date())
+            for when in (NOW, scheduled + dt.timedelta(days=1)):
+                clock.return_value = when
+                journal.publish_queue(state, self.config, Mock())
+            self.assertEqual(state.clock(), (None, 0, None))
             transport.assert_not_called()
-            clock.return_value = NOW + dt.timedelta(days=9)
-            journal.scheduled(state, self.config, fresh(clock.return_value), Mock())
-            transport.assert_called_once()
 
     def test_telegram_error_never_prints_secret(self):
         with patch.object(journal.urllib.request, "urlopen", side_effect=urllib.error.URLError("hidden-token")):
@@ -803,16 +840,60 @@ class JournalTest(unittest.TestCase):
                              [11, 12, 13])
             self.assertEqual([call.args[0] for call in transport.call_args_list], ["one", "two", "two", "three"])
 
-    def test_explicit_rejection_releases_reservation_without_resend_that_day(self):
-        error = urllib.error.HTTPError("https://api.telegram.org", 429, "Too Many Requests", {},
-                                       io.BytesIO(b'{"ok":false,"error_code":429}'))
-        with (self.store() as conn, patch.dict(journal.os.environ, CREDS, clear=True),
-              patch.object(journal, "now_moscow", return_value=NOW),
-              patch.object(sources, "collect", return_value=([], [])), patch.object(journal, "check", return_value=True),
-              patch.object(journal.urllib.request, "urlopen", side_effect=error) as transport):
+    def test_partial_retry_sends_only_remaining_cards_and_expiry_does_not_backfill(self):
+        at = NOW.replace(hour=14)
+        rejection = journal.TelegramRejected("429", 429)
+        with (patch.dict(os.environ, CREDS, clear=True), patch.object(journal, "now_moscow", return_value=at) as clock,
+              patch.object(visual_issue.time, "sleep"),
+              patch.object(journal, "send_request", side_effect=[11, rejection, 12, 21, rejection]) as transport):
+            with self.store() as conn:
+                state = journal.Journal(conn)
+                self.save_ready(state, at.date())
+                with self.assertRaises(journal.TelegramRejected):
+                    journal.publish_queue(state, self.config, Mock())
+            with self.store() as conn:
+                state = journal.Journal(conn)
+                journal.publish_queue(state, self.config, Mock())
+                self.assertEqual(state.clock(), (at.isoformat(), 1, None))
+                next_slot = at + dt.timedelta(days=3)
+                self.save_ready(state, next_slot.date())
+                clock.return_value = next_slot
+                with self.assertRaises(journal.TelegramRejected):
+                    journal.publish_queue(state, self.config, Mock())
+                clock.return_value = next_slot + dt.timedelta(days=1)
+                journal.publish_queue(state, self.config, Mock())
+                released = conn.execute("SELECT status,telegram_id FROM issues WHERE scheduled_for=?",
+                                        (next_slot.date().isoformat(),)).fetchone()
+                self.assertEqual(released, ("released", 21))
+                self.assertEqual(state.clock()[1:], (1, None))
+        self.assertEqual([call.args[1]["text"] for call in transport.call_args_list],
+                         ["Карточка 0", "Карточка 1", "Карточка 1", "Карточка 0", "Карточка 1"])
+
+    @unittest.skipUnless(os.getenv("ART_RADAR_QUEUE_TEST_DB"), "hosted queue round trip")
+    def test_real_hosted_queue_reopens_and_publishes_without_network(self):
+        shutil.copyfile(os.environ["ART_RADAR_QUEUE_TEST_DB"], self.path)
+        with self.store() as conn:
             state = journal.Journal(conn)
-            with self.assertRaises(journal.TelegramRejected):
-                journal.scheduled(state, self.config, fresh(), Mock())
-            self.assertEqual(state.clock(), (None, 0, None))
-            journal.scheduled(state, self.config, fresh(), Mock())
-            transport.assert_called_once()
+            entries = conn.execute("SELECT slot,prepared,packets FROM ready_issues ORDER BY slot").fetchall()
+            self.assertGreaterEqual(len(entries), journal.QUEUE_DEPTH)
+            slots = [dt.date.fromisoformat(row[0]) for row in entries]
+            self.assertEqual((slots[1] - slots[0]).days, CONFIG["interval_days"])
+            slot, prepared, packed = entries[0]
+            when = dt.datetime.combine(slots[0], dt.time(14, 3), journal.MOSCOW)
+            self.assertLess(dt.datetime.fromisoformat(prepared), when.replace(hour=11, minute=0))
+            packets = journal.thaw_packets(packed)
+            self.assertTrue(any(packet[2] for packet, _ in packets), "release should carry licensed media")
+        with (patch.dict(os.environ, CREDS, clear=True),
+              patch.object(journal, "now_moscow", return_value=when),
+              patch.object(visual_issue.time, "sleep"),
+              patch.object(journal, "send_request", side_effect=range(501, 501 + len(packets))) as transport,
+              patch.object(journal.urllib.request, "urlopen", side_effect=AssertionError("Network forbidden")),
+              patch.object(journal.Journal, "daily", side_effect=AssertionError("No collection")),
+              patch.object(journal, "prepare", side_effect=AssertionError("No editing or visual verification"))):
+            for _ in range(2):
+                with self.store() as conn:
+                    journal.publish_queue(journal.Journal(conn), CONFIG, Mock())
+            self.assertEqual(transport.call_count, len(packets))
+        with self.store() as conn:
+            self.assertEqual(conn.execute("SELECT status FROM issues WHERE scheduled_for=?", (slot,)).fetchone(), ("sent",))
+            self.assertEqual(conn.execute("SELECT count(*) FROM ready_issues").fetchone(), (len(entries) - 1,))

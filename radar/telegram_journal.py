@@ -1,7 +1,9 @@
 """Collect, preview and (when enabled) publish the separate Art Radar journal."""
 
 import argparse
+import base64
 import datetime as dt
+import gzip
 import hashlib
 import hmac
 import html
@@ -31,16 +33,26 @@ DEFAULT_DB = sources.ROOT.parent / "data" / "journal.sqlite3"
 STATE_BRANCH = "art-radar-journal-state"
 TEST_STATE_BRANCH = "art-radar-journal-test-state"
 DEFAULT_TEST_DB = DEFAULT_DB.with_name("journal-test.sqlite3")
+QUEUE_DEPTH = 2
+QUEUE_BYTES = 40_000_000
+PUBLISH_UNTIL = dt.time(17)
 
 
 def now_moscow():
     return dt.datetime.now(MOSCOW)
 
 
-def due(now, last, time, interval, attempted=None):
+def release_slot(now, config, *, after_today=False):
     now = now.astimezone(MOSCOW)
-    return (now.time() >= time and now.date().isoformat() != attempted
-            and (not last or (now.date() - dt.datetime.fromisoformat(last).astimezone(MOSCOW).date()).days >= interval))
+    start = dt.date.fromisoformat(config["cycle_start"])
+    earliest = now.date() + dt.timedelta(days=after_today)
+    elapsed = max(0, (earliest - start).days)
+    interval = config["interval_days"]
+    return start + dt.timedelta(days=((elapsed + interval - 1) // interval) * interval)
+
+
+def release_time(config):
+    return dt.time.fromisoformat(os.getenv("ART_RADAR_JOURNAL_TIME") or config["publish_time"])
 
 
 def encode(value):
@@ -95,7 +107,13 @@ class Journal:
                 attempted TEXT NOT NULL, sent TEXT, telegram_id INTEGER, items TEXT NOT NULL
             );
             CREATE UNIQUE INDEX IF NOT EXISTS one_pending ON issues(status) WHERE status = 'pending';
+            CREATE TABLE IF NOT EXISTS ready_issues (
+                slot TEXT PRIMARY KEY, prepared TEXT NOT NULL, items TEXT NOT NULL, packets BLOB NOT NULL
+            );
         """)
+        if "scheduled_for" not in {row[1] for row in conn.execute("PRAGMA table_info(issues)")}:
+            conn.execute("ALTER TABLE issues ADD COLUMN scheduled_for TEXT")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_issue_per_slot ON issues(scheduled_for)")
         self.deliveries = visual_issue.Deliveries(conn)
         self.editorial_reserve = journal_reserve.Reserve(conn)
 
@@ -185,7 +203,10 @@ class Journal:
 
     def history(self):
         return [{**row["item"], "_issued_at": sent}
-                for batch, sent in self.conn.execute("SELECT items,sent FROM issues WHERE status='sent'")
+                for batch, sent in self.conn.execute("""
+                    SELECT items,COALESCE(sent,attempted) FROM issues
+                    WHERE status='sent' OR (status='released' AND telegram_id IS NOT NULL)
+                """)
                 for row in json.loads(batch)]
 
     def clock(self):
@@ -193,36 +214,44 @@ class Journal:
         pending = self.conn.execute("SELECT id FROM issues WHERE status='pending'").fetchone()
         return sent, count, pending[0] if pending else None
 
-    def reserve(self, picked, now, time, interval, expected_count, plan=None):
+    def slot_claimed(self, slot):
+        return self.conn.execute("""
+            SELECT 1 FROM issues WHERE scheduled_for=? OR (status='sent' AND substr(sent,1,10)=?)
+        """, (slot, slot)).fetchone() is not None
+
+    def claim_ready(self, slot, now, destination):
         with self.conn:
             self.conn.execute("BEGIN IMMEDIATE")
-            last, count, pending = self.clock()
-            if pending or count != expected_count or not due(now, last, time, interval, self.setting("attempted_on")):
+            if self.clock()[2] or self.slot_claimed(slot):
                 return None
-            batch = [{"item": c.item, "url": c.key, "score": c.score, "ratings": c.metrics} for c in picked]
-            self.put("attempted_on", now.date().isoformat())
-            if not batch:
+            ready = self.conn.execute("SELECT items,packets FROM ready_issues WHERE slot=?", (slot,)).fetchone()
+            if not ready:
                 return None
-            self.put("reservation", uuid.uuid4().hex)
-            issue = self.conn.execute("INSERT INTO issues (status, attempted, items) VALUES ('pending', ?, ?)",
-                                      (now.isoformat(), encode(batch))).lastrowid
-            if plan:
-                self.deliveries.record(f"issue:{issue}", plan)
+            batch, packets = ready
+            issue = self.conn.execute("""
+                INSERT INTO issues (status, attempted, items, scheduled_for) VALUES ('pending', ?, ?, ?)
+            """, (now.isoformat(), batch, slot)).lastrowid
+            self.deliveries.record(f"issue:{issue}", {"slot": slot, "destination": destination,
+                                                     "size": len(thaw_packets(packets))})
             return issue
 
-    def resolve(self, issue, message_id, now=None):
+    def resolve(self, issue, message_id, now=None, *, partial=False):
         with self.conn:
-            if message_id:
+            if message_id and not partial:
                 updated = self.conn.execute(
                     "UPDATE issues SET status='sent', sent=COALESCE(?, attempted), telegram_id=? "
                     "WHERE id=? AND status='pending'", (now.isoformat() if now else None, message_id, issue))
             else:
-                updated = self.conn.execute("UPDATE issues SET status='released' WHERE id=? AND status='pending'", (issue,))
+                updated = self.conn.execute("""
+                    UPDATE issues SET status='released',telegram_id=? WHERE id=? AND status='pending'
+                """, (message_id, issue))
             if not updated.rowcount:
                 raise ValueError("Выпуск не находится в состоянии ожидания подтверждения")
             if message_id:
                 batch = self.conn.execute("SELECT items FROM issues WHERE id=?", (issue,)).fetchone()[0]
                 self.editorial_reserve.remove(row["url"] for row in json.loads(batch))
+            self.conn.execute("DELETE FROM ready_issues WHERE slot=(SELECT scheduled_for FROM issues WHERE id=?)",
+                              (issue,))
 
 
 def checkpoint(db, expected_branch=STATE_BRANCH):
@@ -1139,84 +1168,164 @@ def check_platforms(config):
         print(f"{name} · {status}")
 
 
-def publish_visual(journal, issue, plan, packets, credentials, config, persist):
-    token, chat, thread = credentials
-    fallbacks = classic_fallbacks(plan, packets, chat, thread, config)
+def freeze_packets(entries, config, prepared_image):
+    packets = visual_packets(entries, "", None, config, prepared_image=prepared_image)
+    fallbacks = classic_fallbacks(entries, packets, "", None, config)
+
+    def freeze(packet):
+        method, data, files = packet
+        return [method, data, [[name, base64.b64encode(body).decode(), filename] for name, body, filename in files]]
+
+    result = [[freeze(packet), freeze(fallbacks[id(packet)]) if id(packet) in fallbacks else None]
+              for packet in packets]
+    return gzip.compress(encode(result).encode(), compresslevel=3, mtime=0)
+
+
+def thaw_packets(packed, chat="", thread=None):
+    def thaw(packet):
+        method, data, files = packet
+        data["chat_id"] = chat
+        if thread is not None:
+            data["message_thread_id"] = thread
+        return method, data, [(name, base64.b64decode(body, validate=True), filename) for name, body, filename in files]
+
+    return [(thaw(packet), thaw(fallback) if fallback else None) for packet, fallback in json.loads(gzip.decompress(packed))]
+
+
+def queue_status(journal, config, now):
+    last, count, pending = journal.clock()
+    day = release_slot(now, config, after_today=now.time() >= PUBLISH_UNTIL)
+    while journal.slot_claimed(day.isoformat()):
+        day += dt.timedelta(days=config["interval_days"])
+    return {"last_success": last, "published": count, "pending": pending, "collected_on": journal.setting("collected_on"),
+            "next_slot": dt.datetime.combine(day, release_time(config), MOSCOW).isoformat(),
+            "ready": [{"slot": slot, "prepared": prepared, "materials": count, "bytes": size}
+                      for slot, prepared, count, size in journal.conn.execute("""
+                        SELECT slot,prepared,json_array_length(items),length(packets) FROM ready_issues
+                        WHERE slot>=? AND NOT EXISTS(SELECT 1 FROM issues WHERE scheduled_for=slot)
+                        ORDER BY slot
+                      """, (now.date().isoformat(),))]}
+
+
+def prepare_queue(journal, config, archive, persist):
+    now = now_moscow()
+    today = now.date()
+    # Prevent a delayed preparation job from occupying the delivery window on a release day.
+    if release_slot(now, config) == today and dt.time(10, 45) <= now.time() < PUBLISH_UNTIL:
+        print("Окно публикации. Подготовка продолжится отдельным запуском.")
+        return
+    if journal.daily(config, now):
+        persist()
+    with journal.conn:
+        retired = journal.conn.execute("""
+            DELETE FROM ready_issues WHERE slot<?
+            AND NOT EXISTS (SELECT 1 FROM issues WHERE scheduled_for=slot AND status='pending')
+        """, (today.isoformat(),)).rowcount
+    if retired:
+        persist()
+    start = release_slot(now, config, after_today=now.time() >= release_time(config))
+    interval = dt.timedelta(days=config["interval_days"])
+    slots = []
+    day = start
+    while len(slots) < QUEUE_DEPTH:
+        if not journal.slot_claimed(day.isoformat()):
+            slots.append(day)
+        day += interval
+    queued = {row[0]: json.loads(row[1]) for row in journal.conn.execute("SELECT slot,items FROM ready_issues")}
+    if all(day.isoformat() in queued for day in slots):
+        print(encode(queue_status(journal, config, now)))
+        return
+    _, count, _ = journal.clock()
+    history = journal.history() + [row["item"] for batch in queued.values() for row in batch]
+    pool = combine(journal.items(), archive)
+    reserve = journal.editorial_reserve if config.get("accumulate_reserve") else None
+    copies = journal_articles.ArticleChecks(config) if config.get("article_domains") else None
+    visuals = check_visuals(config, keep_files=True)
+    links = LinkChecks()
+    variant = os.getenv("ART_RADAR_JOURNAL_FORMAT") or visual_issue.DEFAULT_FORMAT
+    for offset, day in enumerate(slots, count + 1):
+        slot = day.isoformat()
+        if slot in queued:
+            continue
+        at = dt.datetime.combine(day, release_time(config), MOSCOW)
+        theme = next_theme(config, offset)
+        args = (pool, config, history, at)
+        checks = {"verify": links, "article_checks": copies, "visual_checks": visuals, "reserve": reserve, "journal": journal}
+        picked, result = prepare(*args, theme, offset, **checks)
+        if not picked and theme:
+            picked, result = prepare(*args, None, offset, **checks)
+        if not picked:
+            reasons = Counter(row["decision"] for row in result["items"])
+            print(encode({"slot": slot, "status": "no-ready-issue", "decisions": reasons}))
+            persist()
+            break
+        entries = visual_issue.make_plan(result["visual"], variant)
+        try:
+            packets = freeze_packets(entries, config, journal.prepared_image)
+        except ValueError as error:
+            print(f"Выпуск на {slot}: {error}")
+            persist()
+            break
+        used = journal.conn.execute("SELECT COALESCE(SUM(length(packets)),0) FROM ready_issues").fetchone()[0]
+        if used + len(packets) > QUEUE_BYTES:
+            print(f"Выпуск на {slot}: резерв вложений достиг лимита хранилища.")
+            break
+        batch = [{"item": c.item, "url": c.key, "score": c.score, "ratings": c.metrics} for c in picked]
+        with journal.conn:
+            journal.conn.execute("INSERT INTO ready_issues VALUES (?,?,?,?)", (slot, now.isoformat(), encode(batch), packets))
+        history.extend(c.item for c in picked)
+        persist()
+    print(encode(queue_status(journal, config, now)))
+
+
+def publish_queue(journal, config, persist):
+    if os.getenv("ART_RADAR_JOURNAL_PUBLISH") != "1":
+        return
+    now = now_moscow()
+    slot = now.date().isoformat()
+    in_window = release_slot(now, config) == now.date() and release_time(config) <= now.time() < PUBLISH_UNTIL
+    pending = journal.clock()[2]
+    plan = journal.deliveries.plan(f"issue:{pending}") if pending else None
+    if pending and (not plan or "slot" not in plan):
+        print(f"Выпуск №{pending} ожидает сверки старой отправки.")
+        return
+    if pending and (not in_window or plan["slot"] != slot):
+        if plan["slot"] >= slot and now.time() < PUBLISH_UNTIL:
+            return
+        receipts = [row[0] for row in journal.conn.execute(
+            "SELECT telegram_id FROM visual_slots WHERE batch=? ORDER BY slot", (f"issue:{pending}",))]
+        if None in receipts:
+            print(f"Выпуск №{pending} ожидает сверки с Telegram. Просроченные карточки не отправляются.")
+            return
+        attempted = journal.conn.execute("SELECT attempted FROM issues WHERE id=?", (pending,)).fetchone()[0]
+        journal.resolve(pending, next(iter(receipts), None), attempted, partial=len(receipts) != plan["size"])
+        persist()
+        pending = None
+    if not in_window or (not pending and journal.slot_claimed(slot)):
+        return
+    ready = journal.conn.execute("SELECT packets FROM ready_issues WHERE slot=?", (slot,)).fetchone()
+    if not ready:
+        print(f"На {slot} нет заранее подготовленного выпуска.")
+        return
+    token, chat, thread = group_credentials()
+    destination = hashlib.sha256(f"{chat}\n{thread}".encode()).hexdigest()
+    if pending and plan["destination"] != destination:
+        raise ValueError("Чат или тема ожидающего выпуска изменились. Сверьте настройки доставки.")
+    packets = thaw_packets(ready[0], chat, thread)
+    issue = pending or journal.claim_ready(slot, now, destination)
+    if not issue:
+        return
+    if not pending:
+        persist()
     try:
-        receipts = journal.deliveries.deliver(f"issue:{issue}", packets,
-                                             lambda packet, root: transmit_visual(packet, root, token, fallbacks.get(id(packet))),
-                                             persist)
+        receipts = journal.deliveries.deliver(
+            f"issue:{issue}", packets, lambda entry, root: transmit_visual(entry[0], root, token, entry[1]), persist)
     except visual_issue.UnconfirmedCard as error:
         print(f"Выпуск №{issue}. {error}")
         return
     journal.resolve(issue, receipts[0], now_moscow())
     persist()
-    print(f"Выпуск №{issue} подтверждён. Карточек {len(receipts)}.")
-
-
-def scheduled(journal, config, archive, persist):
-    now = now_moscow()
-    if journal.daily(config, now):
-        persist()
-    if os.getenv("ART_RADAR_JOURNAL_PUBLISH") != "1":
-        return
-    last, count, pending = journal.clock()
-    plan = journal.deliveries.plan(f"issue:{pending}") if pending else None
-    if pending and not plan:
-        print(f"Выпуск №{pending} ожидает подтверждения. Автоотправка приостановлена.")
-        return
-    time = dt.time.fromisoformat(os.getenv("ART_RADAR_JOURNAL_TIME") or config["publish_time"])
-    interval = config["interval_days"]
-    if not pending and not due(now, last, time, interval, journal.setting("attempted_on")):
-        return
-    credentials = group_credentials()
-    _, chat, thread = credentials
-    route = hashlib.sha256(f"{chat}\n{thread}".encode()).hexdigest()
-    if plan:
-        if plan.get("destination") != route:
-            raise ValueError("Чат или тема ожидающего выпуска изменились. Сверьте настройки доставки.")
-        if config.get("visual_selection") and plan.get("visual_policy") not in {1, 2, journal_visuals.POLICY}:
-            raise ValueError("Ожидающий выпуск сформирован до проверки иллюстраций. Требуется сверка доставки.")
-        entries = plan["entries"]
-        packets = visual_packets(entries, chat, thread, config, prepared_image=journal.prepared_image)
-        publish_visual(journal, pending, entries, packets, credentials, config, persist)
-        return
-    sequence = count + 1
-    theme = next_theme(config, sequence)
-    pool, history = combine(journal.items(), archive), journal.history()
-    article_checks = journal_articles.ArticleChecks(config) if config.get("article_domains") else None
-    visuals = check_visuals(config, keep_files=True)
-    reserve = journal.editorial_reserve if config.get("accumulate_reserve") else None
-    if reserve is not None:
-        eligible, _ = editorial.assess(pool, config, now, history)
-        with journal.conn:
-            reserve.replenish(eligible, now, config["news_days"])
-    picked, result = prepare(pool, config, history, now, theme, sequence, verify=True,
-                             article_checks=article_checks, visual_checks=visuals, reserve=reserve, journal=journal)
-    if not picked and theme:
-        picked, result = prepare(pool, config, history, now, None, sequence, verify=True,
-                                 article_checks=article_checks, visual_checks=visuals, reserve=reserve, journal=journal)
-    variant = os.getenv("ART_RADAR_JOURNAL_FORMAT") or visual_issue.DEFAULT_FORMAT
-    plan = visual_issue.make_plan(result["visual"], variant) if picked and variant != "legacy" else None
-    packets = visual_packets(plan, chat, thread, config, prepared_image=journal.prepared_image) if plan else []
-    reserved_plan = {"entries": plan, "destination": route, "visual_policy": result["visual"].get("policy")} if plan else None
-    issue = journal.reserve(picked, now, time, interval, count, plan=reserved_plan)
-    persist()
-    if issue:
-        if packets:
-            publish_visual(journal, issue, plan, packets, credentials, config, persist)
-            return
-        try:
-            message_id = send(result, *credentials)
-        except TelegramRejected:
-            journal.resolve(issue, None)
-            persist()
-            raise
-        journal.resolve(issue, message_id, now_moscow())
-        persist()
-        print(f"Выпуск №{issue} подтверждён.")
-    elif not picked:
-        print("Подходящих материалов недостаточно. Следующая проверка — завтра.")
+    print(f"Выпуск №{issue} за {slot} подтверждён Telegram. Сообщений: {len(receipts)}.")
 
 
 def main():
@@ -1242,7 +1351,8 @@ def main():
     preview.add_argument("--exclude-audit", type=Path, help="Исключить материалы уже показанного тестового выпуска")
     preview.add_argument("--illustrated", action="store_true", help="Проба вёрстки по свежим материалам с разрешёнными изображениями")
     preview.add_argument("--only-url", action="append", help="Ограничить предпросмотр конкретными проверяемыми публикациями")
-    commands.add_parser("scheduled", help="Ежедневный сбор и проверка срока выпуска")
+    commands.add_parser("prepare-queue", help="Собрать материалы и сохранить готовые выпуски")
+    commands.add_parser("publish-queue", help="Отправить готовый выпуск в своём окне")
     commands.add_parser("prepare-group", help="Проверить права бота и подготовить хранилище группы без отправки")
     commands.add_parser("status", help="Последняя отправка и выпуск в ожидании")
     commands.add_parser("check-platforms", help="Проверить ключи публичных API без поиска и публикации")
@@ -1316,14 +1426,14 @@ def main():
 
     with closing(sqlite3.connect(":memory:" if use_memory else db, timeout=15)) as connection:
         journal = Journal(connection)
-        if args.command == "scheduled":
-            scheduled(journal, config, archive, persist)
+        if args.command == "prepare-queue":
+            prepare_queue(journal, config, archive, persist)
+        elif args.command == "publish-queue":
+            publish_queue(journal, config, persist)
         elif args.command == "prepare-group":
             prepare_group(persist)
         elif args.command == "status":
-            last, count, pending = journal.clock()
-            print(encode({"last_success": last, "published": count, "pending": pending,
-                          "collected_on": journal.setting("collected_on")}))
+            print(encode(queue_status(journal, config, now_moscow())))
         elif args.command == "reconcile":
             key = f"issue:{args.issue}"
             if journal.deliveries.plan(key) is not None:

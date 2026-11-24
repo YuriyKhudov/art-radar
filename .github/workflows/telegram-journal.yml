@@ -6,7 +6,7 @@ on:
       mode:
         description: Предпросмотр, диагностика API, личный тест или сверка с Telegram
         type: choice
-        options: [preview, automatic_preview, check_editor, check_platforms, private_test, prepare_group, confirmed, absent]
+        options: [preview, automatic_preview, check_editor, check_platforms, private_test, check_queue, prepare_queue, prepare_group, confirmed, absent]
         default: preview
       issue:
         description: Номер выпуска для сверки
@@ -41,7 +41,9 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: "0,30 * * * *"
+    - cron: "17 2,15,18 * * *"
+    - cron: "0 8 * * *"
+    - cron: "17,43 8-13 * * *"
 
 permissions:
   contents: read
@@ -255,11 +257,64 @@ jobs:
             --audit approved-preview/audit.json --test-db journal-test-state/journal-test.sqlite3 \
             --variant "$VISUAL_VARIANT" "${args[@]}"
 
+  queue_test_prepare:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'check_queue'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: art-radar-journal-state
+          path: queue-test
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "Pillow==12.3.0" "trafilatura==2.3.1" "Protego==0.7.0"
+      - name: Подготовить очередь из реальных источников в копии базы
+        env:
+          ART_RADAR_CLOUDFLARE_API_TOKEN: ${{ secrets.ART_RADAR_CLOUDFLARE_API_TOKEN }}
+          ART_RADAR_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.ART_RADAR_CLOUDFLARE_ACCOUNT_ID }}
+          JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
+          JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
+        run: python -m radar.telegram_journal --db queue-test/journal.sqlite3 prepare-queue
+      - uses: actions/upload-artifact@v4
+        with:
+          name: art-radar-queue-test
+          path: queue-test/journal.sqlite3
+
+  queue_test_publish:
+    needs: queue_test_prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: art-radar-queue-test
+          path: queue-test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Проверить отправку из сохранённой очереди без сети
+        env:
+          ART_RADAR_QUEUE_TEST_DB: queue-test/journal.sqlite3
+        run: python -m unittest discover -s tests -v
+
   journal:
     if: >-
       (github.event_name == 'schedule' && vars.ART_RADAR_JOURNAL_SCHEDULED == '1') ||
       (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch &&
-        (inputs.mode == 'prepare_group' || inputs.mode == 'confirmed' || inputs.mode == 'absent'))
+        (inputs.mode == 'prepare_queue' || inputs.mode == 'prepare_group' || inputs.mode == 'confirmed' || inputs.mode == 'absent'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -297,19 +352,24 @@ jobs:
         with:
           python-version: "3.12"
       - name: Установить средства подготовки журнала
-        if: github.event_name == 'schedule'
+        if: github.event.schedule == '17 2,15,18 * * *' || inputs.mode == 'prepare_queue'
         run: python -m pip install "Pillow==12.3.0" "trafilatura==2.3.1" "Protego==0.7.0"
-      - name: Проверить готовность группы или обработать расписание
-        if: github.event_name == 'schedule' || inputs.mode == 'prepare_group'
+      - name: Собрать и сохранить готовые выпуски
+        if: github.event.schedule == '17 2,15,18 * * *' || inputs.mode == 'prepare_queue'
         env:
-          EVENT: ${{ github.event_name }}
-          ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
           ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
           ART_RADAR_JOURNAL_FORMAT: ${{ vars.ART_RADAR_JOURNAL_FORMAT }}
           ART_RADAR_CLOUDFLARE_API_TOKEN: ${{ secrets.ART_RADAR_CLOUDFLARE_API_TOKEN }}
           ART_RADAR_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.ART_RADAR_CLOUDFLARE_ACCOUNT_ID }}
           JOURNAL_VK_ACCESS_TOKEN: ${{ secrets.JOURNAL_VK_ACCESS_TOKEN }}
           JOURNAL_YOUTUBE_API_KEY: ${{ secrets.JOURNAL_YOUTUBE_API_KEY }}
+        run: python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state prepare-queue
+      - name: Отправить готовый выпуск или проверить права бота
+        if: (github.event_name == 'schedule' && github.event.schedule != '17 2,15,18 * * *') || inputs.mode == 'prepare_group'
+        env:
+          EVENT: ${{ github.event_name }}
+          ART_RADAR_JOURNAL_PUBLISH: ${{ vars.ART_RADAR_JOURNAL_PUBLISH }}
+          ART_RADAR_JOURNAL_TIME: ${{ vars.ART_RADAR_JOURNAL_TIME }}
           JOURNAL_TELEGRAM_TOKEN: ${{ secrets.JOURNAL_TELEGRAM_TOKEN }}
           JOURNAL_TELEGRAM_CHAT: ${{ secrets.JOURNAL_TELEGRAM_CHAT }}
           JOURNAL_TELEGRAM_TOPIC: ${{ secrets.JOURNAL_TELEGRAM_TOPIC }}
@@ -317,7 +377,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
         run: |
-          command=scheduled
+          command=publish-queue
           if [[ "$EVENT" == workflow_dispatch ]]; then command=prepare-group; fi
           python -m radar.telegram_journal --db journal-state/journal.sqlite3 --git-state "$command"
       - name: Записать результат сверки
